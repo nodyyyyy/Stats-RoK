@@ -110,6 +110,18 @@ def fmt(v):
     except:
         return "0"
 
+
+def clean_number(value):
+    if value is None:
+        return 0
+    value = str(value)
+    value = value.replace(".", "").replace(",", "").replace(" ", "")
+    try:
+        return float(value)
+    except:
+        return 0
+
+
 def create_progress_bar(dkp_pct, dead_pct):
     width, height = 520, 150
     img = Image.new("RGB", (width, height), (32, 34, 37))
@@ -282,9 +294,14 @@ async def my_stats(interaction: discord.Interaction):
 
     r = stats.iloc[0]
 
-    required_deads = r.get("Required Deads", r.get("Requiered Deads", 1))
-    dkp_pct = float(r.get("DKP",0)) / float(r.get("Goal DKP",1) or 1) * 100
-    dead_pct = float(r.get("Deads",0)) / float(required_deads or 1) * 100
+    # Usando clean_number para mayor robustez
+    dkp = clean_number(r.get("DKP", 0))
+    goal_dkp = clean_number(r.get("Goal DKP", 1))
+    deads = clean_number(r.get("Deads", 0))
+    required_deads = clean_number(r.get("Required Deads", r.get("Requiered Deads", 1)))
+
+    dkp_pct = (dkp / goal_dkp * 100) if goal_dkp > 0 else 0
+    dead_pct = (deads / required_deads * 100) if required_deads > 0 else 0
 
     embed = discord.Embed(title="📊 KVK STATISTIC", color=discord.Color.dark_teal())
 
@@ -297,7 +314,7 @@ async def my_stats(interaction: discord.Interaction):
     embed.add_field(name="🎯 KP", value=fmt(r.get("KP",0)), inline=True)
     embed.add_field(name="<:T4:1476664385106739320> T4", value=fmt(r.get("T4 Kills",0)), inline=True)
     embed.add_field(name="<:T5:1476664389095522475> T5", value=fmt(r.get("T5 Kills",0)), inline=True)
-    embed.add_field(name="💀 Deads", value=fmt(r.get("Deads",0)), inline=True)
+    embed.add_field(name="💀 Deads", value=fmt(deads), inline=True)
 
     img = create_progress_bar(dkp_pct, dead_pct)
     file = discord.File(img, "progress.png")
