@@ -294,38 +294,32 @@ async def my_stats(interaction: discord.Interaction):
 
     r = stats.iloc[0]
 
-    # ─── DEBUG TEMPORAL ───────────────────────────────────────────────
-    print("\n=== DEBUG my_stats para usuario", interaction.user.name, "===")
-    print("Main ID buscado:", main_id)
-    print("Filas encontradas:", len(stats))
-    print("Columnas en la fila:", list(r.keys()))
-    print("Valores crudos:")
-    for col in ['Name', 'Power', 'Current Power', 'KP', 'T4 Kills', 'T5 Kills', 'Deads', 'DKP', 'Goal DKP', 'Required Deads']:
-        valor = r.get(col, '<<NO EXISTE>>')
-        print(f"  {col:15} → {valor!r}")
-    print("===")
-    # ──────────────────────────────────────────────────────────────────
+    # ─── Usar clean_number en todos los valores numéricos ────────────────
+    name          = r.get('Name', 'Unknown')
+    power         = clean_number(r.get('Power', 0))
+    current_power = clean_number(r.get('Current Power', 0))
+    kp            = clean_number(r.get('KP', 0))
+    t4_kills      = clean_number(r.get('T4 Kills', 0))
+    t5_kills      = clean_number(r.get('T5 Kills', 0))
+    deads         = clean_number(r.get('Deads', 0))
+    dkp           = clean_number(r.get('DKP', 0))
+    goal_dkp      = clean_number(r.get('Goal DKP', 1))
+    required_deads = clean_number(r.get('Required Deads', r.get('Requiered Deads', 1)))
 
-    # Usando clean_number para mayor robustez
-    dkp = clean_number(r.get("DKP", 0))
-    goal_dkp = clean_number(r.get("Goal DKP", 1))
-    deads = clean_number(r.get("Deads", 0))
-    required_deads = clean_number(r.get("Required Deads", r.get("Requiered Deads", 1)))
-
-    dkp_pct = (dkp / goal_dkp * 100) if goal_dkp > 0 else 0
+    dkp_pct  = (dkp / goal_dkp * 100)   if goal_dkp > 0 else 0
     dead_pct = (deads / required_deads * 100) if required_deads > 0 else 0
 
     embed = discord.Embed(title="📊 KVK STATISTIC", color=discord.Color.dark_teal())
 
     embed.description = (
-        f"👤 **Name:** {r.get('Name','Unknown')}\n"
-        f"🏰 **Power:** {fmt(r.get('Power',0))}\n"
-        f"⚡ **Current Power:** {fmt(r.get('Current Power',0))}"
+        f"👤 **Name:** {name}\n"
+        f"🏰 **Power:** {fmt(power)}\n"
+        f"⚡ **Current Power:** {fmt(current_power)}"
     )
 
-    embed.add_field(name="🎯 KP", value=fmt(r.get("KP",0)), inline=True)
-    embed.add_field(name="<:T4:1476664385106739320> T4", value=fmt(r.get("T4 Kills",0)), inline=True)
-    embed.add_field(name="<:T5:1476664389095522475> T5", value=fmt(r.get("T5 Kills",0)), inline=True)
+    embed.add_field(name="🎯 KP", value=fmt(kp), inline=True)
+    embed.add_field(name="<:T4:1476664385106739320> T4", value=fmt(t4_kills), inline=True)
+    embed.add_field(name="<:T5:1476664389095522475> T5", value=fmt(t5_kills), inline=True)
     embed.add_field(name="💀 Deads", value=fmt(deads), inline=True)
 
     img = create_progress_bar(dkp_pct, dead_pct)
