@@ -293,6 +293,15 @@ async def my_stats(interaction: discord.Interaction):
         return
 
     r = stats.iloc[0]
+    
+    print("\n=== DEBUG my_stats para usuario", interaction.user.name, "===")
+print("Main ID buscado:", main_id)
+print("Filas encontradas:", len(stats))
+print("Columnas en la fila:", list(r.keys()))
+print("Valores crudos:")
+for col in ['Name', 'Power', 'Current Power', 'KP', 'T4 Kills', 'T5 Kills', 'Deads', 'DKP', 'Goal DKP', 'Required Deads']:
+    print(f"  {col:15} → {r.get(col, '<<NO EXISTE>>')!r}")
+print("===")
 
     # Usando clean_number para mayor robustez
     dkp = clean_number(r.get("DKP", 0))
