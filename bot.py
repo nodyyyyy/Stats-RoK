@@ -26,6 +26,7 @@ sheet_cache = {}
 cache_timestamp = 0
 CACHE_DURATION = 60
 
+
 # ================= GOOGLE =================
 
 def get_client():
@@ -43,11 +44,14 @@ def extract_sheet_id(link):
     match = re.search(r"/d/([a-zA-Z0-9-_]+)", link)
     return match.group(1) if match else link.strip()
 
-def refresh_cache():
+
+# -------- BLOCKING (runs in thread) --------
+
+def blocking_refresh_cache():
     global sheet_cache, cache_timestamp
 
     client = get_client()
-    sheet_cache = {}
+    new_cache = {}
 
     # LINKS FILE
     links_spreadsheet = client.open_by_key(LINKS_SHEET_ID)
@@ -57,9 +61,9 @@ def refresh_cache():
     records = links_ws.get_all_records()
 
     if records:
-        sheet_cache["Links"] = pd.DataFrame(records)
+        new_cache["Links"] = pd.DataFrame(records)
     else:
-        sheet_cache["Links"] = pd.DataFrame(columns=headers)
+        new_cache["Links"] = pd.DataFrame(columns=headers)
 
     # STATS FILE
     if STATS_SHEET_ID:
@@ -68,18 +72,33 @@ def refresh_cache():
             headers = ws.row_values(1)
             records = ws.get_all_records()
             if records:
-                sheet_cache[ws.title] = pd.DataFrame(records)
+                new_cache[ws.title] = pd.DataFrame(records)
             else:
-                sheet_cache[ws.title] = pd.DataFrame(columns=headers)
+                new_cache[ws.title] = pd.DataFrame(columns=headers)
 
+    sheet_cache.clear()
+    sheet_cache.update(new_cache)
     cache_timestamp = asyncio.get_event_loop().time()
 
-def get_sheets():
+
+async def refresh_cache():
+    await asyncio.to_thread(blocking_refresh_cache)
+
+
+async def get_sheets():
     global cache_timestamp
     now = asyncio.get_event_loop().time()
     if now - cache_timestamp > CACHE_DURATION:
-        refresh_cache()
+        await refresh_cache()
     return sheet_cache
+
+
+async def get_links_ws():
+    def open_ws():
+        client = get_client()
+        return client.open_by_key(LINKS_SHEET_ID).worksheet("Links")
+    return await asyncio.to_thread(open_ws)
+
 
 # ================= UTIL =================
 
@@ -107,20 +126,17 @@ def create_progress_bar(dkp_pct, dead_pct):
     buf.seek(0)
     return buf
 
-# ================= LINKS =================
 
-def get_links_ws():
-    client = get_client()
-    return client.open_by_key(LINKS_SHEET_ID).worksheet("Links")
+# ================= LINK COMMANDS =================
 
 @bot.tree.command(name="link")
 async def link(interaction: discord.Interaction, rok_id: str):
 
     await interaction.response.defer(ephemeral=True)
 
-    sheets = get_sheets()
+    sheets = await get_sheets()
     df = sheets.get("Links")
-    ws = get_links_ws()
+    ws = await get_links_ws()
 
     if "Discord ID" in df.columns:
         if str(interaction.user.id) in df["Discord ID"].astype(str).values:
@@ -132,19 +148,20 @@ async def link(interaction: discord.Interaction, rok_id: str):
             await interaction.followup.send("RoK ID already linked.")
             return
 
-    ws.append_row([str(interaction.user.id), rok_id, ""])
-    refresh_cache()
+    await asyncio.to_thread(ws.append_row, [str(interaction.user.id), rok_id, ""])
+    await refresh_cache()
 
     await interaction.followup.send("Linked successfully.")
+
 
 @bot.tree.command(name="unlink")
 async def unlink(interaction: discord.Interaction):
 
     await interaction.response.defer(ephemeral=True)
 
-    sheets = get_sheets()
+    sheets = await get_sheets()
     df = sheets.get("Links")
-    ws = get_links_ws()
+    ws = await get_links_ws()
 
     rows = df[df["Discord ID"].astype(str) == str(interaction.user.id)]
     if rows.empty:
@@ -152,19 +169,20 @@ async def unlink(interaction: discord.Interaction):
         return
 
     row_index = rows.index[0] + 2
-    ws.delete_rows(row_index)
-    refresh_cache()
+    await asyncio.to_thread(ws.delete_rows, row_index)
+    await refresh_cache()
 
     await interaction.followup.send("Unlinked successfully.")
+
 
 @bot.tree.command(name="link_filler")
 async def link_filler(interaction: discord.Interaction, filler_id: str):
 
     await interaction.response.defer(ephemeral=True)
 
-    sheets = get_sheets()
+    sheets = await get_sheets()
     df = sheets.get("Links")
-    ws = get_links_ws()
+    ws = await get_links_ws()
 
     rows = df[df["Discord ID"].astype(str) == str(interaction.user.id)]
     if rows.empty:
@@ -180,19 +198,20 @@ async def link_filler(interaction: discord.Interaction, filler_id: str):
         return
 
     fillers.append(filler_id)
-    ws.update_cell(index+2, 3, ",".join(fillers))
-    refresh_cache()
+    await asyncio.to_thread(ws.update_cell, index+2, 3, ",".join(fillers))
+    await refresh_cache()
 
     await interaction.followup.send("Filler linked.")
+
 
 @bot.tree.command(name="unlink_filler")
 async def unlink_filler(interaction: discord.Interaction, filler_id: str):
 
     await interaction.response.defer(ephemeral=True)
 
-    sheets = get_sheets()
+    sheets = await get_sheets()
     df = sheets.get("Links")
-    ws = get_links_ws()
+    ws = await get_links_ws()
 
     rows = df[df["Discord ID"].astype(str) == str(interaction.user.id)]
     if rows.empty:
@@ -208,19 +227,37 @@ async def unlink_filler(interaction: discord.Interaction, filler_id: str):
         return
 
     fillers.remove(filler_id)
-    ws.update_cell(index+2, 3, ",".join(fillers))
-    refresh_cache()
+    await asyncio.to_thread(ws.update_cell, index+2, 3, ",".join(fillers))
+    await refresh_cache()
 
     await interaction.followup.send("Filler unlinked.")
 
+
 # ================= STATS =================
+
+@bot.tree.command(name="data")
+async def data(interaction: discord.Interaction, link: str):
+
+    await interaction.response.defer(ephemeral=True)
+
+    if ADMIN_ROLE_ID:
+        if not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
+            await interaction.followup.send("No permission.")
+            return
+
+    global STATS_SHEET_ID
+    STATS_SHEET_ID = extract_sheet_id(link)
+    await refresh_cache()
+
+    await interaction.followup.send("Stats sheet connected.")
+
 
 @bot.tree.command(name="my_stats")
 async def my_stats(interaction: discord.Interaction):
 
     await interaction.response.defer(ephemeral=True)
 
-    sheets = get_sheets()
+    sheets = await get_sheets()
     links = sheets.get("Links")
 
     rows = links[links["Discord ID"].astype(str) == str(interaction.user.id)]
@@ -242,20 +279,16 @@ async def my_stats(interaction: discord.Interaction):
 
     r = stats.iloc[0]
 
-    name = r.get("Name", "Unknown")
-    power = r.get("Power", 0)
-    current_power = r.get("Current Power", 0)
     required_deads = r.get("Required Deads", r.get("Requiered Deads", 1))
-
     dkp_pct = float(r.get("DKP",0)) / float(r.get("Goal DKP",1) or 1) * 100
     dead_pct = float(r.get("Deads",0)) / float(required_deads or 1) * 100
 
     embed = discord.Embed(title="📊 KVK STATISTIC", color=discord.Color.dark_teal())
 
     embed.description = (
-        f"👤 **Name:** {name}\n"
-        f"🏰 **Power:** {fmt(power)}\n"
-        f"⚡ **Current Power:** {fmt(current_power)}"
+        f"👤 **Name:** {r.get('Name','Unknown')}\n"
+        f"🏰 **Power:** {fmt(r.get('Power',0))}\n"
+        f"⚡ **Current Power:** {fmt(r.get('Current Power',0))}"
     )
 
     embed.add_field(name="🎯 KP", value=fmt(r.get("KP",0)), inline=True)
@@ -269,21 +302,8 @@ async def my_stats(interaction: discord.Interaction):
 
     await interaction.followup.send(embed=embed, file=file)
 
-@bot.tree.command(name="data")
-async def data(interaction: discord.Interaction, link: str):
 
-    await interaction.response.defer(ephemeral=True)
-
-    if ADMIN_ROLE_ID:
-        if not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
-            await interaction.followup.send("No permission.")
-            return
-
-    global STATS_SHEET_ID
-    STATS_SHEET_ID = extract_sheet_id(link)
-    refresh_cache()
-
-    await interaction.followup.send("Stats sheet connected.")
+# ================= READY =================
 
 @bot.event
 async def on_ready():
