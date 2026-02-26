@@ -15,8 +15,9 @@ from google.oauth2.service_account import Credentials
 TOKEN = os.environ["DISCORD_TOKEN"]
 GOOGLE_CREDENTIALS = json.loads(os.environ["GOOGLE_CREDENTIALS"])
 LINKS_SHEET_ID = os.environ["LINKS_SHEET_ID"]
-STATS_SHEET_ID = None
 ADMIN_ROLE_ID = int(os.environ.get("ADMIN_ROLE_ID", 0))
+
+STATS_SHEET_ID = None
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -48,7 +49,7 @@ def refresh_cache():
     client = get_client()
     sheet_cache = {}
 
-    # ---- LINKS FILE ----
+    # LINKS FILE
     links_spreadsheet = client.open_by_key(LINKS_SHEET_ID)
     links_ws = links_spreadsheet.worksheet("Links")
 
@@ -60,7 +61,7 @@ def refresh_cache():
     else:
         sheet_cache["Links"] = pd.DataFrame(columns=headers)
 
-    # ---- STATS FILE ----
+    # STATS FILE
     if STATS_SHEET_ID:
         stats_spreadsheet = client.open_by_key(STATS_SHEET_ID)
         for ws in stats_spreadsheet.worksheets():
@@ -115,47 +116,51 @@ def get_links_ws():
 @bot.tree.command(name="link")
 async def link(interaction: discord.Interaction, rok_id: str):
 
+    await interaction.response.defer(ephemeral=True)
+
     sheets = get_sheets()
     df = sheets.get("Links")
     ws = get_links_ws()
 
     if "Discord ID" in df.columns:
         if str(interaction.user.id) in df["Discord ID"].astype(str).values:
-            await interaction.response.send_message("Already linked.", ephemeral=True)
+            await interaction.followup.send("Already linked.")
             return
 
     if "Main ID" in df.columns:
         if rok_id in df["Main ID"].astype(str).values:
-            await interaction.response.send_message("RoK ID already linked.", ephemeral=True)
+            await interaction.followup.send("RoK ID already linked.")
             return
 
     ws.append_row([str(interaction.user.id), rok_id, ""])
     refresh_cache()
-    await interaction.response.send_message("Linked successfully.", ephemeral=True)
+
+    await interaction.followup.send("Linked successfully.")
 
 @bot.tree.command(name="unlink")
 async def unlink(interaction: discord.Interaction):
+
+    await interaction.response.defer(ephemeral=True)
 
     sheets = get_sheets()
     df = sheets.get("Links")
     ws = get_links_ws()
 
-    if "Discord ID" not in df.columns:
-        await interaction.response.send_message("Links sheet misconfigured.", ephemeral=True)
-        return
-
     rows = df[df["Discord ID"].astype(str) == str(interaction.user.id)]
     if rows.empty:
-        await interaction.response.send_message("Not linked.", ephemeral=True)
+        await interaction.followup.send("Not linked.")
         return
 
     row_index = rows.index[0] + 2
     ws.delete_rows(row_index)
     refresh_cache()
-    await interaction.response.send_message("Unlinked successfully.", ephemeral=True)
+
+    await interaction.followup.send("Unlinked successfully.")
 
 @bot.tree.command(name="link_filler")
 async def link_filler(interaction: discord.Interaction, filler_id: str):
+
+    await interaction.response.defer(ephemeral=True)
 
     sheets = get_sheets()
     df = sheets.get("Links")
@@ -163,7 +168,7 @@ async def link_filler(interaction: discord.Interaction, filler_id: str):
 
     rows = df[df["Discord ID"].astype(str) == str(interaction.user.id)]
     if rows.empty:
-        await interaction.response.send_message("Link your main first.", ephemeral=True)
+        await interaction.followup.send("Link your main first.")
         return
 
     index = rows.index[0]
@@ -171,16 +176,19 @@ async def link_filler(interaction: discord.Interaction, filler_id: str):
     fillers = [f.strip() for f in current.split(",") if f.strip()]
 
     if filler_id in fillers:
-        await interaction.response.send_message("Filler already linked.", ephemeral=True)
+        await interaction.followup.send("Filler already linked.")
         return
 
     fillers.append(filler_id)
     ws.update_cell(index+2, 3, ",".join(fillers))
     refresh_cache()
-    await interaction.response.send_message("Filler linked.", ephemeral=True)
+
+    await interaction.followup.send("Filler linked.")
 
 @bot.tree.command(name="unlink_filler")
 async def unlink_filler(interaction: discord.Interaction, filler_id: str):
+
+    await interaction.response.defer(ephemeral=True)
 
     sheets = get_sheets()
     df = sheets.get("Links")
@@ -188,7 +196,7 @@ async def unlink_filler(interaction: discord.Interaction, filler_id: str):
 
     rows = df[df["Discord ID"].astype(str) == str(interaction.user.id)]
     if rows.empty:
-        await interaction.response.send_message("Not linked.", ephemeral=True)
+        await interaction.followup.send("Not linked.")
         return
 
     index = rows.index[0]
@@ -196,13 +204,14 @@ async def unlink_filler(interaction: discord.Interaction, filler_id: str):
     fillers = [f.strip() for f in current.split(",") if f.strip()]
 
     if filler_id not in fillers:
-        await interaction.response.send_message("Filler not found.", ephemeral=True)
+        await interaction.followup.send("Filler not found.")
         return
 
     fillers.remove(filler_id)
     ws.update_cell(index+2, 3, ",".join(fillers))
     refresh_cache()
-    await interaction.response.send_message("Filler unlinked.", ephemeral=True)
+
+    await interaction.followup.send("Filler unlinked.")
 
 # ================= STATS =================
 
@@ -238,7 +247,7 @@ async def my_stats(interaction: discord.Interaction):
     current_power = r.get("Current Power", 0)
     required_deads = r.get("Required Deads", r.get("Requiered Deads", 1))
 
-    dkp_pct = float(r.get("DKP",0)) / float(r.get("Goal DKP",1)) * 100
+    dkp_pct = float(r.get("DKP",0)) / float(r.get("Goal DKP",1) or 1) * 100
     dead_pct = float(r.get("Deads",0)) / float(required_deads or 1) * 100
 
     embed = discord.Embed(title="📊 KVK STATISTIC", color=discord.Color.dark_teal())
@@ -263,15 +272,18 @@ async def my_stats(interaction: discord.Interaction):
 @bot.tree.command(name="data")
 async def data(interaction: discord.Interaction, link: str):
 
+    await interaction.response.defer(ephemeral=True)
+
     if ADMIN_ROLE_ID:
         if not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
-            await interaction.response.send_message("No permission.", ephemeral=True)
+            await interaction.followup.send("No permission.")
             return
 
     global STATS_SHEET_ID
     STATS_SHEET_ID = extract_sheet_id(link)
     refresh_cache()
-    await interaction.response.send_message("Stats sheet connected.", ephemeral=True)
+
+    await interaction.followup.send("Stats sheet connected.")
 
 @bot.event
 async def on_ready():
