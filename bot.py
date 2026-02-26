@@ -3,6 +3,7 @@ import json
 import re
 import io
 import asyncio
+import time
 import discord
 import gspread
 import pandas as pd
@@ -45,7 +46,7 @@ def extract_sheet_id(link):
     return match.group(1) if match else link.strip()
 
 
-# -------- BLOCKING (runs in thread) --------
+# ================= CACHE (THREAD SAFE) =================
 
 def blocking_refresh_cache():
     global sheet_cache, cache_timestamp
@@ -53,7 +54,7 @@ def blocking_refresh_cache():
     client = get_client()
     new_cache = {}
 
-    # LINKS FILE
+    # LINKS
     links_spreadsheet = client.open_by_key(LINKS_SHEET_ID)
     links_ws = links_spreadsheet.worksheet("Links")
 
@@ -65,7 +66,7 @@ def blocking_refresh_cache():
     else:
         new_cache["Links"] = pd.DataFrame(columns=headers)
 
-    # STATS FILE
+    # STATS
     if STATS_SHEET_ID:
         stats_spreadsheet = client.open_by_key(STATS_SHEET_ID)
         for ws in stats_spreadsheet.worksheets():
@@ -78,7 +79,8 @@ def blocking_refresh_cache():
 
     sheet_cache.clear()
     sheet_cache.update(new_cache)
-    cache_timestamp = asyncio.get_event_loop().time()
+
+    cache_timestamp = time.monotonic()
 
 
 async def refresh_cache():
@@ -87,7 +89,7 @@ async def refresh_cache():
 
 async def get_sheets():
     global cache_timestamp
-    now = asyncio.get_event_loop().time()
+    now = time.monotonic()
     if now - cache_timestamp > CACHE_DURATION:
         await refresh_cache()
     return sheet_cache
@@ -247,6 +249,7 @@ async def data(interaction: discord.Interaction, link: str):
 
     global STATS_SHEET_ID
     STATS_SHEET_ID = extract_sheet_id(link)
+
     await refresh_cache()
 
     await interaction.followup.send("Stats sheet connected.")
