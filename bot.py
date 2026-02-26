@@ -58,7 +58,12 @@ def refresh_cache():
     # Links file
     links_spreadsheet = client.open_by_key(LINKS_SHEET_ID)
     links_ws = links_spreadsheet.worksheet("Links")
-    sheet_cache["Links"] = pd.DataFrame(links_ws.get_all_records())
+    records = links_ws.get_all_records()
+if records:
+    sheet_cache["Links"] = pd.DataFrame(records)
+else:
+    headers = links_ws.row_values(1)
+    sheet_cache["Links"] = pd.DataFrame(columns=headers)
 
     cache_timestamp = asyncio.get_event_loop().time()
 
