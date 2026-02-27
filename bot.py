@@ -295,7 +295,7 @@ async def my_stats(interaction: discord.Interaction):
     EMOJI_T5    = "<:T5:1476664389095522475>"
     EMOJI_DEADS = "💀"
 
-    # ─── Generar fields con barras laterales gruesas y enmarcado ───────────
+    # ─── Generar fields con más espacio y nombre más grande ────────────────
     overall_field_added = False
 
     for sheet_name in ordered_sheets:
@@ -321,12 +321,18 @@ async def my_stats(interaction: discord.Interaction):
         t5    = clean_number(r.get("T5 Kills", 0))
         deads = clean_number(r.get("Deads", 0))
 
-        # ─── Bloque enmarcado con barras gruesas a ambos lados ─────────────
+        # ─── Bloque con más espacio vertical, nombre grande y KP/Deads en negrita ──
         zone_block = (
-            f"▌────────────────────────────────────────▐\n"
-            f"▌  {EMOJI_KP} {fmt(kp)}     {EMOJI_T4} {fmt(t4)}     {EMOJI_T5} {fmt(t5)}  ▌\n"
-            f"▌  {EMOJI_DEADS} {fmt(deads)}  ▌\n"
-            f"▌────────────────────────────────────────▐"
+            f"▌───────────────────────────────────────────────▐\n"
+            f"▌\n"
+            f"▌  **{sheet_name}**  ▌\n"  # nombre más grande (negrita + espacio)
+            f"▌\n"
+            f"▌  {EMOJI_KP} **{fmt(kp)}**     {EMOJI_T4} {fmt(t4)}     {EMOJI_T5} {fmt(t5)}  ▌\n"
+            f"▌\n"
+            f"▌  {EMOJI_DEADS} **{fmt(deads)}**  ▌\n"
+            f"▌\n"
+            f"▌───────────────────────────────────────────────▐\n"
+            f"\n"  # espacio extra entre zonas
         )
 
         embed.add_field(
