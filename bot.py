@@ -17,6 +17,10 @@ GOOGLE_CREDENTIALS = json.loads(os.environ["GOOGLE_CREDENTIALS"])
 LINKS_SHEET_ID = os.environ["LINKS_SHEET_ID"]
 ADMIN_ROLE_ID = int(os.environ.get("ADMIN_ROLE_ID", 0))
 
+# Constantes para bonus fillers
+FILLER_REQUIRED_PERCENT = 0.02   # 2% del Initial Power
+FILLER_BONUS_MULTIPLIER = 0.50   # 50% del exceso
+
 STATS_SHEET_ID = None
 
 intents = discord.Intents.default()
@@ -244,6 +248,8 @@ async def my_stats(interaction: discord.Interaction):
         return
 
     main_id = str(rows.iloc[0]["Main ID"])
+    filler_ids_str = rows.iloc[0].get("Filler IDs", "")
+    flinks = [fid.strip() for fid in filler_ids_str.split(",") if fid.strip()]
 
     # ─── Todas las pestañas de stats (excepto "Links") ─────────────────────
     all_stat_sheets = [name for name in sheets_dict.keys() if name != "Links"]
@@ -258,7 +264,7 @@ async def my_stats(interaction: discord.Interaction):
         await interaction.followup.send("No se encontraron hojas de estadísticas.")
         return
 
-    # ─── Datos para descripción y barra (preferentemente de Overall) ───────
+    # ─── Datos principales (de Overall) ────────────────────────────────────
     main_name = "Unknown"
     main_power = 0
     main_current_power = 0
@@ -321,13 +327,11 @@ async def my_stats(interaction: discord.Interaction):
         t5    = clean_number(r.get("T5 Kills", 0))
         deads = clean_number(r.get("Deads", 0))
 
-        # ─── Bloque con más espacio vertical, nombre grande y KP/Deads en negrita ──
         zone_block = (
-            f"▌───────────────────────────────────────────────▐\n"
-            f"▌  {EMOJI_KP} **{fmt(kp)}**     {EMOJI_T4} {fmt(t4)}     {EMOJI_T5} {fmt(t5)} \n"
+            f"▌\n"
+            f"▌  {EMOJI_KP} **{fmt(kp)}**     {EMOJI_T4} {fmt(t4)}     {EMOJI_T5} {fmt(t5)}  \n"
             f"▌  {EMOJI_DEADS} **{fmt(deads)}** \n"
-            f"▌───────────────────────────────────────────────▐\n"
-            f"\n"
+            f"▌\n"
             f"\n"  # espacio extra entre zonas
         )
 
@@ -345,6 +349,38 @@ async def my_stats(interaction: discord.Interaction):
         embed.add_field(
             name=f"{EMOJI_ZONE} Overall",
             value="No se encontraron datos en Overall",
+            inline=False
+        )
+
+    # ─── Bonus Deads (Fillers) ─────────────────────────────────────────────
+    total_bonus = 0
+    bonus_lines = []
+
+    if overall_df is not None and flinks:
+        for fid in flinks:
+            row_f = overall_df[overall_df["ID"].astype(str) == str(fid)]
+            if row_f.empty:
+                continue
+
+            f = row_f.iloc[0]
+            fname = f.get("Name", "Unknown")
+            power = clean_number(f.get("Initial Power", f.get("Power", 0)))  # fallback a Power si no hay Initial Power
+            deads_f = clean_number(f.get("Deads", 0))
+
+            required = power * FILLER_REQUIRED_PERCENT
+
+            if required > 0 and deads_f > required:
+                bonus = (deads_f - required) * FILLER_BONUS_MULTIPLIER
+                total_bonus += bonus
+                bonus_lines.append(
+                    f"🆔 `{fid}` — **{fname}**\n"
+                    f"💀 **{fmt(deads_f)}** / {fmt(required)} ✨ +**{fmt(bonus)}**"
+                )
+
+    if bonus_lines:
+        embed.add_field(
+            name="✨ Bonus Deads (Fillers)",
+            value="\n\n".join(bonus_lines) + f"\n\n**Total bonus:** +**{fmt(total_bonus)}**",
             inline=False
         )
 
