@@ -8,6 +8,7 @@ import discord
 import gspread
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO  # ← Esto soluciona el NameError
 from discord.ext import commands
 from google.oauth2.service_account import Credentials
 
@@ -129,19 +130,18 @@ def create_animated_progress_bar(dkp_final=0, dead_final=0, duration=1.8, fps=30
         
         progress = i / total_frames
         
-        # Fondo sutil degradado azul → morado
+        # Fondo sutil degradado
         for y in range(height):
             r = 10 + int(y / height * 40)
             g = 31 + int(y / height * 20)
             b = 63 + int(y / height * 60)
-            draw.line((0, y, width, y), fill=(r,g,b))
+            draw.line((0, y, width, y), fill=(r, g, b))
 
         # Barra DKP (dorado)
         dkp_pct = dkp_final * progress
         draw.rounded_rectangle((80, 40, width-80, 110), radius=35, fill=(20, 30, 60))
         fill_w = int((width-160) * min(dkp_pct, 100) / 100)
-        draw.rounded_rectangle((80, 40, 80+fill_w, 110), radius=35, fill=(255, 215, 0))  # dorado
-        # glow
+        draw.rounded_rectangle((80, 40, 80+fill_w, 110), radius=35, fill=(255, 215, 0))
         draw.rounded_rectangle((78, 38, 82+fill_w, 112), radius=37, outline=(255, 215, 0, 120), width=4)
 
         pct_text = f"{int(dkp_pct)}%"
@@ -157,8 +157,7 @@ def create_animated_progress_bar(dkp_final=0, dead_final=0, duration=1.8, fps=30
         dead_pct = dead_final * progress
         draw.rounded_rectangle((80, 140, width-80, 210), radius=35, fill=(30, 10, 20))
         fill_w = int((width-160) * min(dead_pct, 100) / 100)
-        draw.rounded_rectangle((80, 140, 80+fill_w, 210), radius=35, fill=(200, 20, 60))  # rojo reino
-        # glow
+        draw.rounded_rectangle((80, 140, 80+fill_w, 210), radius=35, fill=(200, 20, 60))
         draw.rounded_rectangle((78, 138, 82+fill_w, 212), radius=37, outline=(200, 20, 60, 120), width=4)
 
         pct_text = f"{int(dead_pct)}%"
@@ -179,14 +178,100 @@ def create_animated_progress_bar(dkp_final=0, dead_final=0, duration=1.8, fps=30
         save_all=True,
         append_images=frames[1:],
         duration=int(1000 / fps),
-        loop=1   # Solo reproduce UNA VEZ y se queda en el final
+        loop=1  # Solo reproduce UNA VEZ y se queda en el final
     )
     buf.seek(0)
     
     return buf
 
-# ================= LINK COMMANDS (sin cambios) =================
-# ... (tus comandos link, unlink, link_filler, unlink_filler siguen igual)
+# ================= LINK COMMANDS =================
+@bot.tree.command(name="link")
+async def link(interaction: discord.Interaction, rok_id: str):
+    await interaction.response.defer(ephemeral=True)
+    sheets = await get_sheets()
+    df = sheets.get("Links")
+    ws = await get_links_ws()
+
+    if "Discord ID" in df.columns:
+        if str(interaction.user.id) in df["Discord ID"].astype(str).values:
+            await interaction.followup.send("Already linked.")
+            return
+
+    if "Main ID" in df.columns:
+        if rok_id in df["Main ID"].astype(str).values:
+            await interaction.followup.send("RoK ID already linked.")
+            return
+
+    await asyncio.to_thread(ws.append_row, [str(interaction.user.id), rok_id, ""])
+    await refresh_cache()
+    await interaction.followup.send("Linked successfully.")
+
+@bot.tree.command(name="unlink")
+async def unlink(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    sheets = await get_sheets()
+    df = sheets.get("Links")
+    ws = await get_links_ws()
+
+    rows = df[df["Discord ID"].astype(str) == str(interaction.user.id)]
+    if rows.empty:
+        await interaction.followup.send("Not linked.")
+        return
+
+    row_index = rows.index[0] + 2
+    await asyncio.to_thread(ws.delete_rows, row_index)
+    await refresh_cache()
+    await interaction.followup.send("Unlinked successfully.")
+
+@bot.tree.command(name="link_filler")
+async def link_filler(interaction: discord.Interaction, filler_id: str):
+    await interaction.response.defer(ephemeral=True)
+    sheets = await get_sheets()
+    df = sheets.get("Links")
+    ws = await get_links_ws()
+
+    rows = df[df["Discord ID"].astype(str) == str(interaction.user.id)]
+    if rows.empty:
+        await interaction.followup.send("Link your main first.")
+        return
+
+    index = rows.index[0]
+    current = str(rows.iloc[0].get("Filler IDs", "") or "")
+    fillers = [f.strip() for f in current.split(",") if f.strip()]
+
+    if filler_id in fillers:
+        await interaction.followup.send("Filler already linked.")
+        return
+
+    fillers.append(filler_id)
+    await asyncio.to_thread(ws.update_cell, index+2, 3, ",".join(fillers))
+    await refresh_cache()
+    await interaction.followup.send("Filler linked.")
+
+@bot.tree.command(name="unlink_filler")
+async def unlink_filler(interaction: discord.Interaction, filler_id: str):
+    await interaction.response.defer(ephemeral=True)
+    sheets = await get_sheets()
+    df = sheets.get("Links")
+    ws = await get_links_ws()
+
+    rows = df[df["Discord ID"].astype(str) == str(interaction.user.id)]
+    if rows.empty:
+        await interaction.followup.send("Not linked.")
+        return
+
+    index = rows.index[0]
+    current = str(rows.iloc[0].get("Filler IDs", "") or "")
+    fillers = [f.strip() for f in current.split(",") if f.strip()]
+
+    if filler_id not in fillers:
+        await interaction.followup.send("Filler not found.")
+        return
+
+    fillers.remove(filler_id)
+    await asyncio.to_thread(ws.update_cell, index+2, 3, ",".join(fillers))
+    await refresh_cache()
+    await interaction.followup.send("Filler unlinked.")
 
 # ================= STATS =================
 @bot.tree.command(name="data")
@@ -215,7 +300,7 @@ async def my_stats(interaction: discord.Interaction):
         return
 
     main_id = str(rows.iloc[0]["Main ID"])
-
+    
     filler_ids_raw = rows.iloc[0].get("Filler IDs", "")
     filler_ids_str = str(filler_ids_raw) if filler_ids_raw is not None else ""
     flinks = [fid.strip() for fid in filler_ids_str.split(",") if fid.strip()]
@@ -291,10 +376,10 @@ async def my_stats(interaction: discord.Interaction):
         deads = clean_number(r.get("Deads", 0))
 
         zone_block = (
-        
+            f"▌\n"
             f"▌ {EMOJI_KP} **{fmt(kp)}** {EMOJI_T4} {fmt(t4)} {EMOJI_T5} {fmt(t5)} \n"
             f"▌ {EMOJI_DEADS} **{fmt(deads)}** \n"
-            f"\n"
+            f"▌\n"
             f"\n"
         )
 
