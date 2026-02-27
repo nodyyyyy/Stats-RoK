@@ -160,13 +160,13 @@ def create_animated_progress_bar(dkp_final=0, dead_final=0, duration=2.5, fps=30
         frames.append(img)
 
     # Pausa final
-    for _ in range(fps * 2):
+    for _ in range(fps * 5):
         frames.append(frames[-1])
 
     buf = BytesIO()
     frames[0].save(
         buf, format="GIF", save_all=True, append_images=frames[1:],
-        duration=int(1000/fps), loop=0
+        duration=int(1000/fps), loop=1
     )
     buf.seek(0)
     return buf
