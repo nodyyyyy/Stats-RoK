@@ -245,40 +245,40 @@ async def my_stats(interaction: discord.Interaction):
 
     main_id = str(rows.iloc[0]["Main ID"])
 
-    # ─── Obtener todas las pestañas de stats (excepto Links) ──────────────
+    # ─── Todas las pestañas de stats (excepto "Links") ─────────────────────
     all_stat_sheets = [name for name in sheets_dict.keys() if name != "Links"]
 
-    # Orden: todo lo que no sea Overall primero, Overall al final
+    # Orden: no-Overall primero, Overall al final (si existe)
     ordered_sheets = [s for s in all_stat_sheets if s.lower() != "overall"]
-    if "Overall" in [s.lower() for s in all_stat_sheets]:
+    has_overall = any(s.lower() == "overall" for s in all_stat_sheets)
+    if has_overall:
         ordered_sheets.append("Overall")
 
     if not ordered_sheets:
         await interaction.followup.send("No se encontraron hojas de estadísticas.")
         return
 
-    # ─── Datos principales para descripción y barra (de Overall) ──────────
-    overall_df = sheets_dict.get("Overall")
+    # ─── Datos para descripción y barra (preferentemente de Overall) ───────
     main_name = "Unknown"
     main_power = 0
     main_current_power = 0
     dkp_pct = 0
     dead_pct = 0
 
+    overall_df = sheets_dict.get("Overall")
     if overall_df is not None:
         main_row = overall_df[overall_df["ID"].astype(str) == main_id]
         if not main_row.empty:
-            r_main = main_row.iloc[0]
-            main_name = r_main.get('Name', 'Unknown')
-            main_power = clean_number(r_main.get('Power', 0))
-            main_current_power = clean_number(r_main.get('Current Power', 0))
-            dkp = clean_number(r_main.get('DKP', 0))
-            goal_dkp = clean_number(r_main.get('Goal DKP', 1))
-            deads_main = clean_number(r_main.get('Deads', 0))
-            required_deads = clean_number(r_main.get('Required Deads', r_main.get('Requiered Deads', 1)))
-
+            r = main_row.iloc[0]
+            main_name = r.get('Name', 'Unknown')
+            main_power = clean_number(r.get('Power', 0))
+            main_current_power = clean_number(r.get('Current Power', 0))
+            dkp = clean_number(r.get('DKP', 0))
+            goal_dkp = clean_number(r.get('Goal DKP', 1))
+            deads = clean_number(r.get('Deads', 0))
+            required_deads = clean_number(r.get('Required Deads', r.get('Requiered Deads', 1)))
             dkp_pct = (dkp / goal_dkp * 100) if goal_dkp > 0 else 0
-            dead_pct = (deads_main / required_deads * 100) if required_deads > 0 else 0
+            dead_pct = (deads / required_deads * 100) if required_deads > 0 else 0
 
     embed = discord.Embed(title="📊 KVK STATISTIC", color=discord.Color.dark_teal())
 
@@ -288,14 +288,16 @@ async def my_stats(interaction: discord.Interaction):
         f"⚡ **Current Power:** {fmt(main_current_power)}"
     )
 
-    # ─── Emojis ───────────────────────────────────────────────────────────
+    # ─── Emojis ────────────────────────────────────────────────────────────
     EMOJI_ZONE  = "<:KvK:1476664387358949541>"
     EMOJI_KP    = "🎯"
     EMOJI_T4    = "<:T4:1476664385106739320>"
     EMOJI_T5    = "<:T5:1476664389095522475>"
     EMOJI_DEADS = "💀"
 
-    # ─── Campos por cada pestaña/zone ─────────────────────────────────────
+    # ─── Generar fields para TODAS las pestañas ────────────────────────────
+    overall_field_added = False
+
     for sheet_name in ordered_sheets:
         df = sheets_dict.get(sheet_name)
         if df is None:
@@ -303,6 +305,13 @@ async def my_stats(interaction: discord.Interaction):
 
         row = df[df["ID"].astype(str) == main_id]
         if row.empty:
+            if sheet_name.lower() == "overall":
+                embed.add_field(
+                    name=f"{EMOJI_ZONE} Overall",
+                    value="No se encontraron datos en Overall",
+                    inline=False
+                )
+                overall_field_added = True
             continue
 
         r = row.iloc[0]
@@ -325,7 +334,18 @@ async def my_stats(interaction: discord.Interaction):
             inline=False
         )
 
-    # ─── Barra de progreso ────────────────────────────────────────────────
+        if sheet_name.lower() == "overall":
+            overall_field_added = True
+
+    # Si Overall existe pero no se agregó (por algún motivo raro), forzamos un mensaje
+    if has_overall and not overall_field_added:
+        embed.add_field(
+            name=f"{EMOJI_ZONE} Overall",
+            value="No se encontraron datos en Overall",
+            inline=False
+        )
+
+    # ─── Barra de progreso ─────────────────────────────────────────────────
     img = create_progress_bar(dkp_pct, dead_pct)
     file = discord.File(img, "progress.png")
     embed.set_image(url="attachment://progress.png")
