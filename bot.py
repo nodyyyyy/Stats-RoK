@@ -324,14 +324,10 @@ async def my_stats(interaction: discord.Interaction):
         # ─── Bloque con más espacio vertical, nombre grande y KP/Deads en negrita ──
         zone_block = (
             f"▌───────────────────────────────────────────────▐\n"
-            f"▌\n"
-            f"▌  **{sheet_name}**  ▌\n"  # nombre más grande (negrita + espacio)
-            f"▌\n"
-            f"▌  {EMOJI_KP} **{fmt(kp)}**     {EMOJI_T4} {fmt(t4)}     {EMOJI_T5} {fmt(t5)}  ▌\n"
-            f"▌\n"
-            f"▌  {EMOJI_DEADS} **{fmt(deads)}**  ▌\n"
-            f"▌\n"
+            f"▌  {EMOJI_KP} **{fmt(kp)}**     {EMOJI_T4} {fmt(t4)}     {EMOJI_T5} {fmt(t5)} \n"
+            f"▌  {EMOJI_DEADS} **{fmt(deads)}** \n"
             f"▌───────────────────────────────────────────────▐\n"
+            f"\n"
             f"\n"  # espacio extra entre zonas
         )
 
