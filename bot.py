@@ -280,7 +280,7 @@ async def my_stats(interaction: discord.Interaction):
             dkp_pct = (dkp / goal_dkp * 100) if goal_dkp > 0 else 0
             dead_pct = (deads / required_deads * 100) if required_deads > 0 else 0
 
-    embed = discord.Embed(title="📊 KVK STATISTIC", color=discord.Color.dark_teal())
+    embed = discord.Embed(title="📊 KVK STATISTIC", color=discord.Color.purple())
 
     embed.description = (
         f"👤 **Name:** {main_name}\n"
@@ -295,7 +295,7 @@ async def my_stats(interaction: discord.Interaction):
     EMOJI_T5    = "<:T5:1476664389095522475>"
     EMOJI_DEADS = "💀"
 
-    # ─── Generar fields para TODAS las pestañas ────────────────────────────
+    # ─── Generar fields con barra lateral blanca ───────────────────────────
     overall_field_added = False
 
     for sheet_name in ordered_sheets:
@@ -307,8 +307,8 @@ async def my_stats(interaction: discord.Interaction):
         if row.empty:
             if sheet_name.lower() == "overall":
                 embed.add_field(
-                    name=f"{EMOJI_ZONE} Overall",
-                    value="No se encontraron datos en Overall",
+                    name=f"{EMOJI_ZONE} {sheet_name}",
+                    value="No se encontraron datos en esta hoja",
                     inline=False
                 )
                 overall_field_added = True
@@ -322,10 +322,9 @@ async def my_stats(interaction: discord.Interaction):
         deads = clean_number(r.get("Deads", 0))
 
         zone_block = (
-            f"{EMOJI_KP} {fmt(kp)} "
-            f"{EMOJI_T4} {fmt(t4)} "
-            f"{EMOJI_T5} {fmt(t5)}\n"
-            f"{EMOJI_DEADS} {fmt(deads)}"
+            f"▌ {EMOJI_KP} {fmt(kp)}   {EMOJI_T4} {fmt(t4)}   {EMOJI_T5} {fmt(t5)}\n"
+            f"▌ {EMOJI_DEADS} {fmt(deads)}\n"
+            f"▌───────────────────────────────"
         )
 
         embed.add_field(
@@ -337,7 +336,7 @@ async def my_stats(interaction: discord.Interaction):
         if sheet_name.lower() == "overall":
             overall_field_added = True
 
-    # Si Overall existe pero no se agregó (por algún motivo raro), forzamos un mensaje
+    # Si Overall existe pero no se agregó, forzamos
     if has_overall and not overall_field_added:
         embed.add_field(
             name=f"{EMOJI_ZONE} Overall",
