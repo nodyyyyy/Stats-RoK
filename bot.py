@@ -17,9 +17,9 @@ GOOGLE_CREDENTIALS = json.loads(os.environ["GOOGLE_CREDENTIALS"])
 LINKS_SHEET_ID = os.environ["LINKS_SHEET_ID"]
 ADMIN_ROLE_ID = int(os.environ.get("ADMIN_ROLE_ID", 0))
 
-# Constantes para bonus fillers
-FILLER_REQUIRED_PERCENT = 0.02   # 2% del Initial Power
-FILLER_BONUS_MULTIPLIER = 0.50   # 50% del exceso
+# Filler Bonus Settings
+FILLER_REQUIRED_PERCENT = 0.02   # 2% of Initial Power
+FILLER_BONUS_MULTIPLIER = 0.50   # 50% of excess
 
 STATS_SHEET_ID = None
 
@@ -46,7 +46,7 @@ def extract_sheet_id(link):
     match = re.search(r"/d/([a-zA-Z0-9-_]+)", link)
     return match.group(1) if match else link.strip()
 
-# ================= CACHE (THREAD SAFE) =================
+# ================= CACHE =================
 def blocking_refresh_cache():
     global sheet_cache, cache_timestamp
 
@@ -78,7 +78,6 @@ def blocking_refresh_cache():
 
     sheet_cache.clear()
     sheet_cache.update(new_cache)
-
     cache_timestamp = time.monotonic()
 
 async def refresh_cache():
@@ -248,25 +247,20 @@ async def my_stats(interaction: discord.Interaction):
         return
 
     main_id = str(rows.iloc[0]["Main ID"])
-    
-    # Corrección: forzar string para evitar error con numpy.int64
+
+    # Fix for numpy.int64 error
     filler_ids_raw = rows.iloc[0].get("Filler IDs", "")
     filler_ids_str = str(filler_ids_raw) if filler_ids_raw is not None else ""
     flinks = [fid.strip() for fid in filler_ids_str.split(",") if fid.strip()]
 
-    # ─── Todas las pestañas de stats (excepto "Links") ─────────────────────
+    # All stat sheets
     all_stat_sheets = [name for name in sheets_dict.keys() if name != "Links"]
-
     ordered_sheets = [s for s in all_stat_sheets if s.lower() != "overall"]
     has_overall = any(s.lower() == "overall" for s in all_stat_sheets)
     if has_overall:
         ordered_sheets.append("Overall")
 
-    if not ordered_sheets:
-        await interaction.followup.send("No se encontraron hojas de estadísticas.")
-        return
-
-    # ─── Datos principales (de Overall) ────────────────────────────────────
+    # Main data for description and progress bar
     main_name = "Unknown"
     main_power = 0
     main_current_power = 0
@@ -296,14 +290,13 @@ async def my_stats(interaction: discord.Interaction):
         f"⚡ **Current Power:** {fmt(main_current_power)}"
     )
 
-    # ─── Emojis ────────────────────────────────────────────────────────────
     EMOJI_ZONE  = "<:KvK:1476664387358949541>"
     EMOJI_KP    = "🎯"
     EMOJI_T4    = "<:T4:1476664385106739320>"
     EMOJI_T5    = "<:T5:1476664389095522475>"
     EMOJI_DEADS = "💀"
 
-    # ─── Generar fields con tu zone_block exacto ───────────────────────────
+    # Zones with your exact zone_block
     overall_field_added = False
 
     for sheet_name in ordered_sheets:
@@ -316,7 +309,7 @@ async def my_stats(interaction: discord.Interaction):
             if sheet_name.lower() == "overall":
                 embed.add_field(
                     name=f"{EMOJI_ZONE} {sheet_name}",
-                    value="No se encontraron datos en esta hoja",
+                    value="No data found in this sheet",
                     inline=False
                 )
                 overall_field_added = True
@@ -334,7 +327,7 @@ async def my_stats(interaction: discord.Interaction):
             f"▌ {EMOJI_KP} **{fmt(kp)}** {EMOJI_T4} {fmt(t4)} {EMOJI_T5} {fmt(t5)} \n"
             f"▌ {EMOJI_DEADS} **{fmt(deads)}** \n"
             f"▌\n"
-            f"\n"  # espacio extra entre zonas
+            f"\n"
         )
 
         embed.add_field(
@@ -346,15 +339,14 @@ async def my_stats(interaction: discord.Interaction):
         if sheet_name.lower() == "overall":
             overall_field_added = True
 
-    # Si Overall existe pero no se agregó, forzamos
     if has_overall and not overall_field_added:
         embed.add_field(
             name=f"{EMOJI_ZONE} Overall",
-            value="No se encontraron datos en Overall",
+            value="No data found in Overall",
             inline=False
         )
 
-    # ─── Bonus Deads (Fillers) ─────────────────────────────────────────────
+    # ================= FILLER BONUS WITH PROGRESS BAR =================
     total_bonus = 0
     bonus_lines = []
 
@@ -362,31 +354,58 @@ async def my_stats(interaction: discord.Interaction):
         for fid in flinks:
             row_f = overall_df[overall_df["ID"].astype(str) == str(fid)]
             if row_f.empty:
+                bonus_lines.append(f"🆔 `{fid}` — Not found in Overall")
                 continue
 
             f = row_f.iloc[0]
             fname = f.get("Name", "Unknown")
-            power = clean_number(f.get("Initial Power", f.get("Power", 0)))  # fallback a Power
+            power = clean_number(f.get("Initial Power", f.get("Power", 0)))
             deads_f = clean_number(f.get("Deads", 0))
 
             required = power * FILLER_REQUIRED_PERCENT
 
-            if required > 0 and deads_f > required:
-                bonus = (deads_f - required) * FILLER_BONUS_MULTIPLIER
+            progress_pct = (deads_f / required * 100) if required > 0 else 0
+            progress_pct = min(max(progress_pct, 0), 100)
+
+            filled = int(progress_pct / 10)
+            bar = "█" * filled + "─" * (10 - filled)
+            bar_display = f"[{bar}] {int(progress_pct)}%"
+
+            bonus = 0
+            if progress_pct >= 100:
+                excess = deads_f - required
+                bonus = excess * FILLER_BONUS_MULTIPLIER
                 total_bonus += bonus
-                bonus_lines.append(
-                    f"🆔 `{fid}` — **{fname}**\n"
-                    f"💀 **{fmt(deads_f)}** / {fmt(required)} ✨ +**{fmt(bonus)}**"
-                )
+                bonus_text = f"✨ +**{fmt(bonus)}**"
+            else:
+                bonus_text = "(does not qualify yet)"
+
+            bonus_lines.append(
+                f"🆔 `{fid}` — **{fname}**\n"
+                f"💀 **{fmt(deads_f)}** / {fmt(required)}  {bar_display}\n"
+                f"{bonus_text}"
+            )
 
     if bonus_lines:
         embed.add_field(
-            name="✨ Bonus Deads (Fillers)",
+            name="✨ Filler Bonus (Deads)",
             value="\n\n".join(bonus_lines) + f"\n\n**Total bonus:** +**{fmt(total_bonus)}**",
             inline=False
         )
+    elif flinks:
+        embed.add_field(
+            name="✨ Filler Bonus (Deads)",
+            value="No fillers qualify for bonus yet.",
+            inline=False
+        )
+    else:
+        embed.add_field(
+            name="✨ Filler Bonus (Deads)",
+            value="No linked fillers.",
+            inline=False
+        )
 
-    # ─── Barra de progreso ─────────────────────────────────────────────────
+    # Progress Bar
     img = create_progress_bar(dkp_pct, dead_pct)
     file = discord.File(img, "progress.png")
     embed.set_image(url="attachment://progress.png")
