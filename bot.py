@@ -24,7 +24,7 @@ FILLER_BONUS_MULTIPLIER = 0.50
 
 STATS_SHEET_ID = None
 
-# CONFIGURACIÓN DE INTENTS (Corregido para evitar el Warning)
+# CONFIGURACIÓN DE INTENTS
 intents = discord.Intents.default()
 intents.message_content = True 
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -132,12 +132,10 @@ def create_animated_progress_bar(dkp_final=0, dead_final=0, duration=2.5, fps=30
         draw.text((345, 62), f"{int(curr_dead)}%", fill="white", font=font_bold)
         frames.append(img)
 
-    # Pausa de 5 segundos al final para que no reinicie inmediatamente
     for _ in range(fps * 5):
         frames.append(frames[-1])
 
     buf = BytesIO()
-    # loop=1 en Pillow suele reproducir la secuencia una vez y parar (o hacer 2 pasadas)
     frames[0].save(
         buf, format="GIF", save_all=True, append_images=frames[1:],
         duration=int(1000/fps), loop=1
@@ -259,7 +257,12 @@ async def my_stats(interaction: discord.Interaction):
     embed = discord.Embed(title="📊 KVK STATISTIC", color=discord.Color.purple())
     embed.description = f"👤 **Name:** {main_name}\n🏰 **Power:** {fmt(main_power)}\n⚡ **Current Power:** {fmt(main_current_power)}"
 
-    EMOJI_ZONE, EMOJI_KP, EMOJI_T4, EMOJI_T5, EMOJI_DEADS = "<:KvK:1476664387358949541>", "🎯", "<:T4:1476664385106739320>", "<:T5:1476664389095522475>", "💀"
+    # Emojis actualizados
+    EMOJI_ZONE = "<:KvK:1476664387358949541>"
+    EMOJI_KP = "🎯"
+    EMOJI_T4 = "<:T4:1476664385106739320>"
+    EMOJI_T5 = "<:T5:1476664389095522475>"
+    EMOJI_DEADS = "💀"
 
     for sheet_name in ordered_sheets:
         df = sheets_dict.get(sheet_name)
@@ -267,8 +270,18 @@ async def my_stats(interaction: discord.Interaction):
         row = df[df["ID"].astype(str) == main_id]
         if not row.empty:
             r = row.iloc[0]
-            kp, t4, t5, ds = clean_number(r.get("KP", 0)), clean_number(r.get("T4 Kills", 0)), clean_number(r.get("T5 Kills", 0)), clean_number(r.get("Deads", 0))
-            zone_block = f"▌\n▌ {EMOJI_KP} **{fmt(kp)}** {EMOJI_T4} {fmt(t4)} {EMOJI_T5} {fmt(t5)} \n▌ {EMOJI_DEADS} **{fmt(ds)}** \n▌\n\n"
+            kp = clean_number(r.get("KP", 0))
+            t4 = clean_number(r.get("T4 Kills", 0))
+            t5 = clean_number(r.get("T5 Kills", 0))
+            ds = clean_number(r.get("Deads", 0))
+            
+            # --- FORMATO VERTICAL CON NOMBRES ---
+            zone_block = (
+                f"┣ {EMOJI_KP} **KP:** {fmt(kp)}\n"
+                f"┣ {EMOJI_T4} **T4 Kills:** {fmt(t4)}\n"
+                f"┣ {EMOJI_T5} **T5 Kills:** {fmt(t5)}\n"
+                f"┗ {EMOJI_DEADS} **Deads:** {fmt(ds)}\n"
+            )
             embed.add_field(name=f"{EMOJI_ZONE} {sheet_name}", value=zone_block, inline=False)
 
     total_bonus, bonus_lines = 0, []
@@ -285,7 +298,8 @@ async def my_stats(interaction: discord.Interaction):
                 bar = "█" * int(prog / 10) + "─" * (10 - int(prog / 10))
                 bonus_lines.append(f"🆔 `{fid}` — **{fn}**\n💀 **{fmt(df_)}** / {fmt(req)}  [{bar}] {int(prog)}%\n{f'✨ +**{fmt(bonus)}**' if prog >= 100 else '(not qualified)'}")
 
-    if bonus_lines: embed.add_field(name="✨ Filler Bonus (Deads)", value="\n\n".join(bonus_lines) + f"\n\n**Total bonus:** +**{fmt(total_bonus)}**", inline=False)
+    if bonus_lines: 
+        embed.add_field(name="✨ Filler Bonus (Deads)", value="\n\n".join(bonus_lines) + f"\n\n**Total bonus:** +**{fmt(total_bonus)}**", inline=False)
 
     gif_buf = await asyncio.to_thread(create_animated_progress_bar, dkp_pct, dead_pct)
     file = discord.File(gif_buf, filename="progress.gif")
