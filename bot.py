@@ -295,7 +295,7 @@ async def my_stats(interaction: discord.Interaction):
     EMOJI_T5    = "<:T5:1476664389095522475>"
     EMOJI_DEADS = "💀"
 
-    # ─── Generar fields con barra lateral blanca ───────────────────────────
+    # ─── Generar fields con barras laterales gruesas y enmarcado ───────────
     overall_field_added = False
 
     for sheet_name in ordered_sheets:
@@ -321,10 +321,12 @@ async def my_stats(interaction: discord.Interaction):
         t5    = clean_number(r.get("T5 Kills", 0))
         deads = clean_number(r.get("Deads", 0))
 
+        # ─── Bloque enmarcado con barras gruesas a ambos lados ─────────────
         zone_block = (
-            f"▌ {EMOJI_KP} {fmt(kp)}   {EMOJI_T4} {fmt(t4)}   {EMOJI_T5} {fmt(t5)}\n"
-            f"▌ {EMOJI_DEADS} {fmt(deads)}\n"
-            f"▌───────────────────────────────"
+            f"▌────────────────────────────────────────▐\n"
+            f"▌  {EMOJI_KP} {fmt(kp)}     {EMOJI_T4} {fmt(t4)}     {EMOJI_T5} {fmt(t5)}  ▌\n"
+            f"▌  {EMOJI_DEADS} {fmt(deads)}  ▌\n"
+            f"▌────────────────────────────────────────▐"
         )
 
         embed.add_field(
