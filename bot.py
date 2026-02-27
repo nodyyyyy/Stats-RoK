@@ -248,13 +248,15 @@ async def my_stats(interaction: discord.Interaction):
         return
 
     main_id = str(rows.iloc[0]["Main ID"])
-    filler_ids_str = rows.iloc[0].get("Filler IDs", "")
+    
+    # Corrección: forzar string para evitar error con numpy.int64
+    filler_ids_raw = rows.iloc[0].get("Filler IDs", "")
+    filler_ids_str = str(filler_ids_raw) if filler_ids_raw is not None else ""
     flinks = [fid.strip() for fid in filler_ids_str.split(",") if fid.strip()]
 
     # ─── Todas las pestañas de stats (excepto "Links") ─────────────────────
     all_stat_sheets = [name for name in sheets_dict.keys() if name != "Links"]
 
-    # Orden: no-Overall primero, Overall al final (si existe)
     ordered_sheets = [s for s in all_stat_sheets if s.lower() != "overall"]
     has_overall = any(s.lower() == "overall" for s in all_stat_sheets)
     if has_overall:
@@ -301,7 +303,7 @@ async def my_stats(interaction: discord.Interaction):
     EMOJI_T5    = "<:T5:1476664389095522475>"
     EMOJI_DEADS = "💀"
 
-    # ─── Generar fields con más espacio y nombre más grande ────────────────
+    # ─── Generar fields con tu zone_block exacto ───────────────────────────
     overall_field_added = False
 
     for sheet_name in ordered_sheets:
@@ -329,8 +331,8 @@ async def my_stats(interaction: discord.Interaction):
 
         zone_block = (
             f"▌\n"
-            f"▌  {EMOJI_KP} **{fmt(kp)}**     {EMOJI_T4} {fmt(t4)}     {EMOJI_T5} {fmt(t5)}  \n"
-            f"▌  {EMOJI_DEADS} **{fmt(deads)}** \n"
+            f"▌ {EMOJI_KP} **{fmt(kp)}** {EMOJI_T4} {fmt(t4)} {EMOJI_T5} {fmt(t5)} \n"
+            f"▌ {EMOJI_DEADS} **{fmt(deads)}** \n"
             f"▌\n"
             f"\n"  # espacio extra entre zonas
         )
@@ -364,7 +366,7 @@ async def my_stats(interaction: discord.Interaction):
 
             f = row_f.iloc[0]
             fname = f.get("Name", "Unknown")
-            power = clean_number(f.get("Initial Power", f.get("Power", 0)))  # fallback a Power si no hay Initial Power
+            power = clean_number(f.get("Initial Power", f.get("Power", 0)))  # fallback a Power
             deads_f = clean_number(f.get("Deads", 0))
 
             required = power * FILLER_REQUIRED_PERCENT
