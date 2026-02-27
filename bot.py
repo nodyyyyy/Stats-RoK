@@ -12,7 +12,6 @@ from discord.ext import commands
 from google.oauth2.service_account import Credentials
 
 # ================= ENV =================
-
 TOKEN = os.environ["DISCORD_TOKEN"]
 GOOGLE_CREDENTIALS = json.loads(os.environ["GOOGLE_CREDENTIALS"])
 LINKS_SHEET_ID = os.environ["LINKS_SHEET_ID"]
@@ -27,9 +26,7 @@ sheet_cache = {}
 cache_timestamp = 0
 CACHE_DURATION = 60
 
-
 # ================= GOOGLE =================
-
 def get_client():
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
@@ -45,9 +42,7 @@ def extract_sheet_id(link):
     match = re.search(r"/d/([a-zA-Z0-9-_]+)", link)
     return match.group(1) if match else link.strip()
 
-
 # ================= CACHE (THREAD SAFE) =================
-
 def blocking_refresh_cache():
     global sheet_cache, cache_timestamp
 
@@ -82,10 +77,8 @@ def blocking_refresh_cache():
 
     cache_timestamp = time.monotonic()
 
-
 async def refresh_cache():
     await asyncio.to_thread(blocking_refresh_cache)
-
 
 async def get_sheets():
     global cache_timestamp
@@ -94,22 +87,18 @@ async def get_sheets():
         await refresh_cache()
     return sheet_cache
 
-
 async def get_links_ws():
     def open_ws():
         client = get_client()
         return client.open_by_key(LINKS_SHEET_ID).worksheet("Links")
     return await asyncio.to_thread(open_ws)
 
-
 # ================= UTIL =================
-
 def fmt(v):
     try:
         return f"{int(float(v)):,}"
     except:
         return "0"
-
 
 def clean_number(value):
     if value is None:
@@ -120,7 +109,6 @@ def clean_number(value):
         return float(value)
     except:
         return 0
-
 
 def create_progress_bar(dkp_pct, dead_pct):
     width, height = 520, 150
@@ -140,14 +128,10 @@ def create_progress_bar(dkp_pct, dead_pct):
     buf.seek(0)
     return buf
 
-
 # ================= LINK COMMANDS =================
-
 @bot.tree.command(name="link")
 async def link(interaction: discord.Interaction, rok_id: str):
-
     await interaction.response.defer(ephemeral=True)
-
     sheets = await get_sheets()
     df = sheets.get("Links")
     ws = await get_links_ws()
@@ -164,15 +148,11 @@ async def link(interaction: discord.Interaction, rok_id: str):
 
     await asyncio.to_thread(ws.append_row, [str(interaction.user.id), rok_id, ""])
     await refresh_cache()
-
     await interaction.followup.send("Linked successfully.")
-
 
 @bot.tree.command(name="unlink")
 async def unlink(interaction: discord.Interaction):
-
     await interaction.response.defer(ephemeral=True)
-
     sheets = await get_sheets()
     df = sheets.get("Links")
     ws = await get_links_ws()
@@ -185,15 +165,11 @@ async def unlink(interaction: discord.Interaction):
     row_index = rows.index[0] + 2
     await asyncio.to_thread(ws.delete_rows, row_index)
     await refresh_cache()
-
     await interaction.followup.send("Unlinked successfully.")
-
 
 @bot.tree.command(name="link_filler")
 async def link_filler(interaction: discord.Interaction, filler_id: str):
-
     await interaction.response.defer(ephemeral=True)
-
     sheets = await get_sheets()
     df = sheets.get("Links")
     ws = await get_links_ws()
@@ -214,15 +190,11 @@ async def link_filler(interaction: discord.Interaction, filler_id: str):
     fillers.append(filler_id)
     await asyncio.to_thread(ws.update_cell, index+2, 3, ",".join(fillers))
     await refresh_cache()
-
     await interaction.followup.send("Filler linked.")
-
 
 @bot.tree.command(name="unlink_filler")
 async def unlink_filler(interaction: discord.Interaction, filler_id: str):
-
     await interaction.response.defer(ephemeral=True)
-
     sheets = await get_sheets()
     df = sheets.get("Links")
     ws = await get_links_ws()
@@ -243,17 +215,12 @@ async def unlink_filler(interaction: discord.Interaction, filler_id: str):
     fillers.remove(filler_id)
     await asyncio.to_thread(ws.update_cell, index+2, 3, ",".join(fillers))
     await refresh_cache()
-
     await interaction.followup.send("Filler unlinked.")
 
-
 # ================= STATS =================
-
 @bot.tree.command(name="data")
 async def data(interaction: discord.Interaction, link: str):
-
     await interaction.response.defer(ephemeral=True)
-
     if ADMIN_ROLE_ID:
         if not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
             await interaction.followup.send("No permission.")
@@ -261,19 +228,15 @@ async def data(interaction: discord.Interaction, link: str):
 
     global STATS_SHEET_ID
     STATS_SHEET_ID = extract_sheet_id(link)
-
     await refresh_cache()
-
     await interaction.followup.send("Stats sheet connected.")
-
 
 @bot.tree.command(name="my_stats")
 async def my_stats(interaction: discord.Interaction):
-
     await interaction.response.defer(ephemeral=True)
 
-    sheets = await get_sheets()
-    links = sheets.get("Links")
+    sheets_dict = await get_sheets()
+    links = sheets_dict.get("Links")
 
     rows = links[links["Discord ID"].astype(str) == str(interaction.user.id)]
     if rows.empty:
@@ -281,56 +244,95 @@ async def my_stats(interaction: discord.Interaction):
         return
 
     main_id = str(rows.iloc[0]["Main ID"])
-    overall = sheets.get("Overall")
 
-    if overall is None:
-        await interaction.followup.send("Stats sheet not connected.")
+    # ─── Obtener todas las pestañas de stats (excepto Links) ──────────────
+    all_stat_sheets = [name for name in sheets_dict.keys() if name != "Links"]
+
+    # Orden: todo lo que no sea Overall primero, Overall al final
+    ordered_sheets = [s for s in all_stat_sheets if s.lower() != "overall"]
+    if "Overall" in [s.lower() for s in all_stat_sheets]:
+        ordered_sheets.append("Overall")
+
+    if not ordered_sheets:
+        await interaction.followup.send("No se encontraron hojas de estadísticas.")
         return
 
-    stats = overall[overall["ID"].astype(str) == main_id]
-    if stats.empty:
-        await interaction.followup.send("Stats not found.")
-        return
+    # ─── Datos principales para descripción y barra (de Overall) ──────────
+    overall_df = sheets_dict.get("Overall")
+    main_name = "Unknown"
+    main_power = 0
+    main_current_power = 0
+    dkp_pct = 0
+    dead_pct = 0
 
-    r = stats.iloc[0]
+    if overall_df is not None:
+        main_row = overall_df[overall_df["ID"].astype(str) == main_id]
+        if not main_row.empty:
+            r_main = main_row.iloc[0]
+            main_name = r_main.get('Name', 'Unknown')
+            main_power = clean_number(r_main.get('Power', 0))
+            main_current_power = clean_number(r_main.get('Current Power', 0))
+            dkp = clean_number(r_main.get('DKP', 0))
+            goal_dkp = clean_number(r_main.get('Goal DKP', 1))
+            deads_main = clean_number(r_main.get('Deads', 0))
+            required_deads = clean_number(r_main.get('Required Deads', r_main.get('Requiered Deads', 1)))
 
-    # ─── Usar clean_number en todos los valores numéricos ────────────────
-    name          = r.get('Name', 'Unknown')
-    power         = clean_number(r.get('Power', 0))
-    current_power = clean_number(r.get('Current Power', 0))
-    kp            = clean_number(r.get('KP', 0))
-    t4_kills      = clean_number(r.get('T4 Kills', 0))
-    t5_kills      = clean_number(r.get('T5 Kills', 0))
-    deads         = clean_number(r.get('Deads', 0))
-    dkp           = clean_number(r.get('DKP', 0))
-    goal_dkp      = clean_number(r.get('Goal DKP', 1))
-    required_deads = clean_number(r.get('Required Deads', r.get('Requiered Deads', 1)))
-
-    dkp_pct  = (dkp / goal_dkp * 100)   if goal_dkp > 0 else 0
-    dead_pct = (deads / required_deads * 100) if required_deads > 0 else 0
+            dkp_pct = (dkp / goal_dkp * 100) if goal_dkp > 0 else 0
+            dead_pct = (deads_main / required_deads * 100) if required_deads > 0 else 0
 
     embed = discord.Embed(title="📊 KVK STATISTIC", color=discord.Color.dark_teal())
 
     embed.description = (
-        f"👤 **Name:** {name}\n"
-        f"🏰 **Power:** {fmt(power)}\n"
-        f"⚡ **Current Power:** {fmt(current_power)}"
+        f"👤 **Name:** {main_name}\n"
+        f"🏰 **Power:** {fmt(main_power)}\n"
+        f"⚡ **Current Power:** {fmt(main_current_power)}"
     )
 
-    embed.add_field(name="🎯 KP", value=fmt(kp), inline=True)
-    embed.add_field(name="<:T4:1476664385106739320> T4", value=fmt(t4_kills), inline=True)
-    embed.add_field(name="<:T5:1476664389095522475> T5", value=fmt(t5_kills), inline=True)
-    embed.add_field(name="💀 Deads", value=fmt(deads), inline=True)
+    # ─── Emojis ───────────────────────────────────────────────────────────
+    EMOJI_ZONE  = "<:KvK:1476664387358949541>"
+    EMOJI_KP    = "🎯"
+    EMOJI_T4    = "<:T4:1476664385106739320>"
+    EMOJI_T5    = "<:T5:1476664389095522475>"
+    EMOJI_DEADS = "💀"
 
+    # ─── Campos por cada pestaña/zone ─────────────────────────────────────
+    for sheet_name in ordered_sheets:
+        df = sheets_dict.get(sheet_name)
+        if df is None:
+            continue
+
+        row = df[df["ID"].astype(str) == main_id]
+        if row.empty:
+            continue
+
+        r = row.iloc[0]
+
+        kp    = clean_number(r.get("KP", 0))
+        t4    = clean_number(r.get("T4 Kills", 0))
+        t5    = clean_number(r.get("T5 Kills", 0))
+        deads = clean_number(r.get("Deads", 0))
+
+        zone_block = (
+            f"{EMOJI_KP} {fmt(kp)} "
+            f"{EMOJI_T4} {fmt(t4)} "
+            f"{EMOJI_T5} {fmt(t5)}\n"
+            f"{EMOJI_DEADS} {fmt(deads)}"
+        )
+
+        embed.add_field(
+            name=f"{EMOJI_ZONE} {sheet_name}",
+            value=zone_block,
+            inline=False
+        )
+
+    # ─── Barra de progreso ────────────────────────────────────────────────
     img = create_progress_bar(dkp_pct, dead_pct)
     file = discord.File(img, "progress.png")
     embed.set_image(url="attachment://progress.png")
 
     await interaction.followup.send(embed=embed, file=file)
 
-
 # ================= READY =================
-
 @bot.event
 async def on_ready():
     await bot.tree.sync()
