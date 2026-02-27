@@ -51,35 +51,39 @@ def extract_sheet_id(link):
 def blocking_refresh_cache():
     global sheet_cache, cache_timestamp
 
-    client = get_client()
-    new_cache = {}
+    try:
+        client = get_client()
+        new_cache = {}
 
-    # LINKS
-    links_spreadsheet = client.open_by_key(LINKS_SHEET_ID)
-    links_ws = links_spreadsheet.worksheet("Links")
+        # LINKS
+        links_spreadsheet = client.open_by_key(LINKS_SHEET_ID)
+        links_ws = links_spreadsheet.worksheet("Links")
 
-    headers = links_ws.row_values(1)
-    records = links_ws.get_all_records()
+        headers = links_ws.row_values(1)
+        records = links_ws.get_all_records()
 
-    if records:
-        new_cache["Links"] = pd.DataFrame(records)
-    else:
-        new_cache["Links"] = pd.DataFrame(columns=headers)
+        if records:
+            new_cache["Links"] = pd.DataFrame(records)
+        else:
+            new_cache["Links"] = pd.DataFrame(columns=headers)
 
-    # STATS
-    if STATS_SHEET_ID:
-        stats_spreadsheet = client.open_by_key(STATS_SHEET_ID)
-        for ws in stats_spreadsheet.worksheets():
-            headers = ws.row_values(1)
-            records = ws.get_all_records()
-            if records:
-                new_cache[ws.title] = pd.DataFrame(records)
-            else:
-                new_cache[ws.title] = pd.DataFrame(columns=headers)
+        # STATS
+        if STATS_SHEET_ID:
+            stats_spreadsheet = client.open_by_key(STATS_SHEET_ID)
+            for ws in stats_spreadsheet.worksheets():
+                headers = ws.row_values(1)
+                records = ws.get_all_records()
+                if records:
+                    new_cache[ws.title] = pd.DataFrame(records)
+                else:
+                    new_cache[ws.title] = pd.DataFrame(columns=headers)
 
-    sheet_cache.clear()
-    sheet_cache.update(new_cache)
-    cache_timestamp = time.monotonic()
+        sheet_cache.clear()
+        sheet_cache.update(new_cache)
+        cache_timestamp = time.monotonic()
+        print("Cache refreshed successfully.")
+    except Exception as e:
+        print(f"Error refreshing cache: {e}")
 
 async def refresh_cache():
     await asyncio.to_thread(blocking_refresh_cache)
@@ -114,67 +118,57 @@ def clean_number(value):
     except:
         return 0
 
-# ================= ANIMATED PROGRESS BAR (GIF - se llena lentamente, solo 1 vez) =================
+# ================= ANIMATED PROGRESS BAR (DISEÑO 400x120) =================
 def create_animated_progress_bar(dkp_final=0, dead_final=0, duration=2.5, fps=30):
     frames = []
     total_frames = int(duration * fps)
     
-    width, height = 600, 240
+    w, h = 400, 120
+    bg_color = (48, 51, 57)  # Gris solicitado
+    bar_bg = (35, 35, 40)
+    
     try:
-        font_label = ImageFont.truetype("arial.ttf", 24)
-        font_pct = ImageFont.truetype("arialbd.ttf", 32)
+        # Intentar cargar fuentes, si no usa default
+        font_main = ImageFont.truetype("arial.ttf", 14)
+        font_bold = ImageFont.truetype("arialbd.ttf", 14)
     except:
-        font_label = font_pct = ImageFont.load_default()
+        font_main = font_bold = ImageFont.load_default()
 
     for i in range(total_frames + 1):
-        img = Image.new("RGB", (width, height), (25, 25, 30))  # fondo oscuro como antes
+        img = Image.new("RGB", (w, h), bg_color)
         draw = ImageDraw.Draw(img)
-        
         progress = i / total_frames
         
-        # Barra DKP (verde)
-        dkp_pct = dkp_final * progress
-        draw.rounded_rectangle((80, 40, width-80, 110), radius=35, fill=(45, 45, 50))
-        fill_w = int((width-160) * min(dkp_pct, 100) / 100)
-        draw.rounded_rectangle((80, 40, 80+fill_w, 110), radius=35, fill=(76, 175, 80))
-        
-        pct_text = f"{int(dkp_pct)}%"
-        bbox = draw.textbbox((0,0), pct_text, font=font_pct)
-        tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
-        draw.text(((width-tw)//2, 55), pct_text, fill="white", font=font_pct)
-        
-        label_bbox = draw.textbbox((0,0), "DKP Progress", font=font_label)
-        lw = label_bbox[2] - label_bbox[0]
-        draw.text(((width-lw)//2, 5), "DKP Progress", fill="white", font=font_label)
+        # BARRA DKP
+        curr_dkp = dkp_final * progress
+        draw.text((25, 12), "DKP Progress", fill="white", font=font_main)
+        draw.rectangle((25, 32, 375, 47), fill=bar_bg)
+        fill_dkp = int(350 * min(curr_dkp, 100) / 100)
+        if fill_dkp > 0:
+            draw.rectangle((25, 32, 25 + fill_dkp, 47), fill=(76, 175, 80))
+        draw.text((345, 12), f"{int(curr_dkp)}%", fill="white", font=font_bold)
 
-        # Barra Deads (rojo)
-        dead_pct = dead_final * progress
-        draw.rounded_rectangle((80, 140, width-80, 210), radius=35, fill=(45, 45, 50))
-        fill_w = int((width-160) * min(dead_pct, 100) / 100)
-        draw.rounded_rectangle((80, 140, 80+fill_w, 210), radius=35, fill=(220, 53, 69))
-        
-        pct_text = f"{int(dead_pct)}%"
-        bbox = draw.textbbox((0,0), pct_text, font=font_pct)
-        tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
-        draw.text(((width-tw)//2, 155), pct_text, fill="white", font=font_pct)
-        
-        label_bbox = draw.textbbox((0,0), "Deads Progress", font=font_label)
-        lw = label_bbox[2] - label_bbox[0]
-        draw.text(((width-lw)//2, 105), "Deads Progress", fill="white", font=font_label)
+        # BARRA DEADS
+        curr_dead = dead_final * progress
+        draw.text((25, 62), "Deads Progress", fill="white", font=font_main)
+        draw.rectangle((25, 82, 375, 97), fill=bar_bg)
+        fill_dead = int(350 * min(curr_dead, 100) / 100)
+        if fill_dead > 0:
+            draw.rectangle((25, 82, 25 + fill_dead, 97), fill=(220, 53, 69))
+        draw.text((345, 62), f"{int(curr_dead)}%", fill="white", font=font_bold)
 
         frames.append(img)
 
+    # Pausa final
+    for _ in range(fps * 2):
+        frames.append(frames[-1])
+
     buf = BytesIO()
     frames[0].save(
-        buf,
-        format="GIF",
-        save_all=True,
-        append_images=frames[1:],
-        duration=int(1000 / fps),
-        loop=1   # Solo reproduce UNA VEZ y se queda en el final
+        buf, format="GIF", save_all=True, append_images=frames[1:],
+        duration=int(1000/fps), loop=1
     )
     buf.seek(0)
-    
     return buf
 
 # ================= LINK COMMANDS =================
@@ -282,7 +276,7 @@ async def data(interaction: discord.Interaction, link: str):
 
 @bot.tree.command(name="my_stats")
 async def my_stats(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer(ephemeral=False)
 
     sheets_dict = await get_sheets()
     links = sheets_dict.get("Links")
@@ -293,7 +287,6 @@ async def my_stats(interaction: discord.Interaction):
         return
 
     main_id = str(rows.iloc[0]["Main ID"])
-    
     filler_ids_raw = rows.iloc[0].get("Filler IDs", "")
     filler_ids_str = str(filler_ids_raw) if filler_ids_raw is not None else ""
     flinks = [fid.strip() for fid in filler_ids_str.split(",") if fid.strip()]
@@ -308,11 +301,8 @@ async def my_stats(interaction: discord.Interaction):
         await interaction.followup.send("No stat sheets found.")
         return
 
-    main_name = "Unknown"
-    main_power = 0
-    main_current_power = 0
-    dkp_pct = 0
-    dead_pct = 0
+    main_name, main_power, main_current_power = "Unknown", 0, 0
+    dkp_pct, dead_pct = 0, 0
 
     overall_df = sheets_dict.get("Overall")
     if overall_df is not None:
@@ -330,7 +320,6 @@ async def my_stats(interaction: discord.Interaction):
             dead_pct = (deads / required_deads * 100) if required_deads > 0 else 0
 
     embed = discord.Embed(title="📊 KVK STATISTIC", color=discord.Color.purple())
-
     embed.description = (
         f"👤 **Name:** {main_name}\n"
         f"🏰 **Power:** {fmt(main_power)}\n"
@@ -344,121 +333,55 @@ async def my_stats(interaction: discord.Interaction):
     EMOJI_DEADS = "💀"
 
     overall_field_added = False
-
     for sheet_name in ordered_sheets:
         df = sheets_dict.get(sheet_name)
-        if df is None:
-            continue
-
+        if df is None: continue
         row = df[df["ID"].astype(str) == main_id]
         if row.empty:
             if sheet_name.lower() == "overall":
-                embed.add_field(
-                    name=f"{EMOJI_ZONE} {sheet_name}",
-                    value="No data found in this sheet",
-                    inline=False
-                )
+                embed.add_field(name=f"{EMOJI_ZONE} {sheet_name}", value="No data found", inline=False)
                 overall_field_added = True
             continue
-
         r = row.iloc[0]
-
-        kp    = clean_number(r.get("KP", 0))
-        t4    = clean_number(r.get("T4 Kills", 0))
-        t5    = clean_number(r.get("T5 Kills", 0))
-        deads = clean_number(r.get("Deads", 0))
-
-        zone_block = (
-            f"▌\n"
-            f"▌ {EMOJI_KP} **{fmt(kp)}** {EMOJI_T4} {fmt(t4)} {EMOJI_T5} {fmt(t5)} \n"
-            f"▌ {EMOJI_DEADS} **{fmt(deads)}** \n"
-            f"▌\n"
-            f"\n"
-        )
-
-        embed.add_field(
-            name=f"{EMOJI_ZONE} {sheet_name}",
-            value=zone_block,
-            inline=False
-        )
-
-        if sheet_name.lower() == "overall":
-            overall_field_added = True
+        kp, t4, t5, deads = clean_number(r.get("KP", 0)), clean_number(r.get("T4 Kills", 0)), clean_number(r.get("T5 Kills", 0)), clean_number(r.get("Deads", 0))
+        zone_block = f"▌\n▌ {EMOJI_KP} **{fmt(kp)}** {EMOJI_T4} {fmt(t4)} {EMOJI_T5} {fmt(t5)} \n▌ {EMOJI_DEADS} **{fmt(deads)}** \n▌\n\n"
+        embed.add_field(name=f"{EMOJI_ZONE} {sheet_name}", value=zone_block, inline=False)
+        if sheet_name.lower() == "overall": overall_field_added = True
 
     if has_overall and not overall_field_added:
-        embed.add_field(
-            name=f"{EMOJI_ZONE} Overall",
-            value="No data found in Overall",
-            inline=False
-        )
+        embed.add_field(name=f"{EMOJI_ZONE} Overall", value="No data found", inline=False)
 
-    # Filler Bonus
+    # Filler Bonus Logic
     total_bonus = 0
     bonus_lines = []
-
     if overall_df is not None and flinks:
         for fid in flinks:
             row_f = overall_df[overall_df["ID"].astype(str) == str(fid)]
             if row_f.empty:
-                bonus_lines.append(f"🆔 `{fid}` — Not found in Overall")
+                bonus_lines.append(f"🆔 `{fid}` — Not found")
                 continue
-
             f = row_f.iloc[0]
-            fname = f.get("Name", "Unknown")
-            power = clean_number(f.get("Initial Power", f.get("Power", 0)))
-            deads_f = clean_number(f.get("Deads", 0))
-
+            fname, power, deads_f = f.get("Name", "Unknown"), clean_number(f.get("Initial Power", f.get("Power", 0))), clean_number(f.get("Deads", 0))
             required = power * FILLER_REQUIRED_PERCENT
-
-            progress_pct = (deads_f / required * 100) if required > 0 else 0
-            progress_pct = min(max(progress_pct, 0), 100)
-
-            filled = int(progress_pct / 10)
-            bar = "█" * filled + "─" * (10 - filled)
-            bar_display = f"[{bar}] {int(progress_pct)}%"
-
-            bonus = 0
-            if progress_pct >= 100:
-                excess = deads_f - required
-                bonus = excess * FILLER_BONUS_MULTIPLIER
-                total_bonus += bonus
-                bonus_text = f"✨ +**{fmt(bonus)}**"
-            else:
-                bonus_text = "(does not qualify yet)"
-
-            bonus_lines.append(
-                f"🆔 `{fid}` — **{fname}**\n"
-                f"💀 **{fmt(deads_f)}** / {fmt(required)}  {bar_display}\n"
-                f"{bonus_text}"
-            )
+            progress_pct = min(max((deads_f / required * 100) if required > 0 else 0, 0), 100)
+            bar = "█" * int(progress_pct / 10) + "─" * (10 - int(progress_pct / 10))
+            bonus = (deads_f - required) * FILLER_BONUS_MULTIPLIER if progress_pct >= 100 else 0
+            total_bonus += bonus
+            bonus_text = f"✨ +**{fmt(bonus)}**" if progress_pct >= 100 else "(not qualified)"
+            bonus_lines.append(f"🆔 `{fid}` — **{fname}**\n💀 **{fmt(deads_f)}** / {fmt(required)}  [{bar}] {int(progress_pct)}%\n{bonus_text}")
 
     if bonus_lines:
-        embed.add_field(
-            name="✨ Filler Bonus (Deads)",
-            value="\n\n".join(bonus_lines) + f"\n\n**Total bonus:** +**{fmt(total_bonus)}**",
-            inline=False
-        )
-    elif flinks:
-        embed.add_field(
-            name="✨ Filler Bonus (Deads)",
-            value="No fillers qualify for bonus yet.",
-            inline=False
-        )
+        embed.add_field(name="✨ Filler Bonus (Deads)", value="\n\n".join(bonus_lines) + f"\n\n**Total bonus:** +**{fmt(total_bonus)}**", inline=False)
     else:
-        embed.add_field(
-            name="✨ Filler Bonus (Deads)",
-            value="No linked fillers.",
-            inline=False
-        )
+        embed.add_field(name="✨ Filler Bonus (Deads)", value="No linked fillers.", inline=False)
 
-    # Animated GIF (solo una vez, se llena lentamente)
-    gif_buf = create_animated_progress_bar(dkp_final=dkp_pct, dead_final=dead_pct, duration=2.5)
+    # GIF Generation
+    gif_buf = await asyncio.to_thread(create_animated_progress_bar, dkp_pct, dead_pct)
     file = discord.File(gif_buf, filename="progress.gif")
     embed.set_image(url="attachment://progress.gif")
 
     await interaction.followup.send(embed=embed, file=file)
 
-# ================= READY =================
 @bot.event
 async def on_ready():
     await bot.tree.sync()
