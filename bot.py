@@ -255,9 +255,12 @@ async def my_stats(interaction: discord.Interaction):
             dkp_pct, dead_pct = (dkp/goal_dkp*100), (deads/req_deads*100)
 
     embed = discord.Embed(title="📊 KVK STATISTIC", color=discord.Color.purple())
-    embed.description = f"👤 **Name:** {main_name}\n🏰 **Power:** {fmt(main_power)}\n⚡ **Current Power:** {fmt(main_current_power)}"
+    embed.description = (
+        f"👤 **Name:** {main_name}\n"
+        f"🏰 **Power:** {fmt(main_power)}\n"
+        f"⚡ **Current Power:** {fmt(main_current_power)}"
+    )
 
-    # Emojis actualizados
     EMOJI_ZONE = "<:KvK:1476664387358949541>"
     EMOJI_KP = "🎯"
     EMOJI_T4 = "<:T4:1476664385106739320>"
@@ -275,12 +278,12 @@ async def my_stats(interaction: discord.Interaction):
             t5 = clean_number(r.get("T5 Kills", 0))
             ds = clean_number(r.get("Deads", 0))
             
-            # --- FORMATO VERTICAL CON NOMBRES ---
+            # Formato vertical con nombres y salto doble para separación clara
             zone_block = (
                 f"┣ {EMOJI_KP} **KP:** {fmt(kp)}\n"
                 f"┣ {EMOJI_T4} **T4 Kills:** {fmt(t4)}\n"
                 f"┣ {EMOJI_T5} **T5 Kills:** {fmt(t5)}\n"
-                f"┗ {EMOJI_DEADS} **Deads:** {fmt(ds)}\n"
+                f"┗ {EMOJI_DEADS} **Deads:** {fmt(ds)}\n\n" 
             )
             embed.add_field(name=f"{EMOJI_ZONE} {sheet_name}", value=zone_block, inline=False)
 
