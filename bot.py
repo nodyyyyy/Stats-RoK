@@ -8,7 +8,7 @@ import discord
 import gspread
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
-from io import BytesIO  # ← Esto soluciona el NameError
+from io import BytesIO
 from discord.ext import commands
 from google.oauth2.service_account import Credentials
 
@@ -54,6 +54,7 @@ def blocking_refresh_cache():
     client = get_client()
     new_cache = {}
 
+    # LINKS
     links_spreadsheet = client.open_by_key(LINKS_SHEET_ID)
     links_ws = links_spreadsheet.worksheet("Links")
 
@@ -65,6 +66,7 @@ def blocking_refresh_cache():
     else:
         new_cache["Links"] = pd.DataFrame(columns=headers)
 
+    # STATS
     if STATS_SHEET_ID:
         stats_spreadsheet = client.open_by_key(STATS_SHEET_ID)
         for ws in stats_spreadsheet.worksheets():
@@ -112,8 +114,8 @@ def clean_number(value):
     except:
         return 0
 
-# ================= ANIMATED PROGRESS BAR (GIF - solo una vez) =================
-def create_animated_progress_bar(dkp_final=0, dead_final=0, duration=1.8, fps=30):
+# ================= ANIMATED PROGRESS BAR (GIF - se llena lentamente, solo 1 vez) =================
+def create_animated_progress_bar(dkp_final=0, dead_final=0, duration=2.5, fps=30):
     frames = []
     total_frames = int(duration * fps)
     
@@ -125,25 +127,17 @@ def create_animated_progress_bar(dkp_final=0, dead_final=0, duration=1.8, fps=30
         font_label = font_pct = ImageFont.load_default()
 
     for i in range(total_frames + 1):
-        img = Image.new("RGB", (width, height), (10, 31, 63))  # azul oscuro reino
+        img = Image.new("RGB", (width, height), (25, 25, 30))  # fondo oscuro como antes
         draw = ImageDraw.Draw(img)
         
         progress = i / total_frames
         
-        # Fondo sutil degradado
-        for y in range(height):
-            r = 10 + int(y / height * 40)
-            g = 31 + int(y / height * 20)
-            b = 63 + int(y / height * 60)
-            draw.line((0, y, width, y), fill=(r, g, b))
-
-        # Barra DKP (dorado)
+        # Barra DKP (verde)
         dkp_pct = dkp_final * progress
-        draw.rounded_rectangle((80, 40, width-80, 110), radius=35, fill=(20, 30, 60))
+        draw.rounded_rectangle((80, 40, width-80, 110), radius=35, fill=(45, 45, 50))
         fill_w = int((width-160) * min(dkp_pct, 100) / 100)
-        draw.rounded_rectangle((80, 40, 80+fill_w, 110), radius=35, fill=(255, 215, 0))
-        draw.rounded_rectangle((78, 38, 82+fill_w, 112), radius=37, outline=(255, 215, 0, 120), width=4)
-
+        draw.rounded_rectangle((80, 40, 80+fill_w, 110), radius=35, fill=(76, 175, 80))
+        
         pct_text = f"{int(dkp_pct)}%"
         bbox = draw.textbbox((0,0), pct_text, font=font_pct)
         tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
@@ -151,15 +145,14 @@ def create_animated_progress_bar(dkp_final=0, dead_final=0, duration=1.8, fps=30
         
         label_bbox = draw.textbbox((0,0), "DKP Progress", font=font_label)
         lw = label_bbox[2] - label_bbox[0]
-        draw.text(((width-lw)//2, 5), "DKP Progress", fill=(255, 215, 0), font=font_label)
+        draw.text(((width-lw)//2, 5), "DKP Progress", fill="white", font=font_label)
 
-        # Barra Deads (rojo intenso)
+        # Barra Deads (rojo)
         dead_pct = dead_final * progress
-        draw.rounded_rectangle((80, 140, width-80, 210), radius=35, fill=(30, 10, 20))
+        draw.rounded_rectangle((80, 140, width-80, 210), radius=35, fill=(45, 45, 50))
         fill_w = int((width-160) * min(dead_pct, 100) / 100)
-        draw.rounded_rectangle((80, 140, 80+fill_w, 210), radius=35, fill=(200, 20, 60))
-        draw.rounded_rectangle((78, 138, 82+fill_w, 212), radius=37, outline=(200, 20, 60, 120), width=4)
-
+        draw.rounded_rectangle((80, 140, 80+fill_w, 210), radius=35, fill=(220, 53, 69))
+        
         pct_text = f"{int(dead_pct)}%"
         bbox = draw.textbbox((0,0), pct_text, font=font_pct)
         tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
@@ -167,7 +160,7 @@ def create_animated_progress_bar(dkp_final=0, dead_final=0, duration=1.8, fps=30
         
         label_bbox = draw.textbbox((0,0), "Deads Progress", font=font_label)
         lw = label_bbox[2] - label_bbox[0]
-        draw.text(((width-lw)//2, 105), "Deads Progress", fill=(200, 20, 60), font=font_label)
+        draw.text(((width-lw)//2, 105), "Deads Progress", fill="white", font=font_label)
 
         frames.append(img)
 
@@ -178,7 +171,7 @@ def create_animated_progress_bar(dkp_final=0, dead_final=0, duration=1.8, fps=30
         save_all=True,
         append_images=frames[1:],
         duration=int(1000 / fps),
-        loop=1  # Solo reproduce UNA VEZ y se queda en el final
+        loop=1   # Solo reproduce UNA VEZ y se queda en el final
     )
     buf.seek(0)
     
@@ -458,8 +451,8 @@ async def my_stats(interaction: discord.Interaction):
             inline=False
         )
 
-    # Animated GIF (solo una vez)
-    gif_buf = create_animated_progress_bar(dkp_final=dkp_pct, dead_final=dead_pct)
+    # Animated GIF (solo una vez, se llena lentamente)
+    gif_buf = create_animated_progress_bar(dkp_final=dkp_pct, dead_final=dead_pct, duration=2.5)
     file = discord.File(gif_buf, filename="progress.gif")
     embed.set_image(url="attachment://progress.gif")
 
