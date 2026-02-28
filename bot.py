@@ -18,13 +18,12 @@ GOOGLE_CREDENTIALS = json.loads(os.environ["GOOGLE_CREDENTIALS"])
 LINKS_SHEET_ID = os.environ["LINKS_SHEET_ID"]
 ADMIN_ROLE_ID = int(os.environ.get("ADMIN_ROLE_ID", 0))
 
-# Filler Bonus Settings
 FILLER_REQUIRED_PERCENT = 0.02
 FILLER_BONUS_MULTIPLIER = 0.50
 
 STATS_SHEET_ID = None
 
-# CONFIGURACIÓN DE INTENTS
+# ================= INTENTS =================
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -35,8 +34,13 @@ CACHE_DURATION = 60
 
 # ================= GOOGLE =================
 def get_client():
-    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_info(GOOGLE_CREDENTIALS, scopes=scopes)
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive",
+    ]
+    creds = Credentials.from_service_account_info(
+        GOOGLE_CREDENTIALS, scopes=scopes
+    )
     return gspread.authorize(creds)
 
 def extract_sheet_id(link):
@@ -53,28 +57,38 @@ def blocking_refresh_cache():
         # -------- LINKS --------
         links_spreadsheet = client.open_by_key(LINKS_SHEET_ID)
         links_ws = links_spreadsheet.worksheet("Links")
-
-        links_values = links_ws.get("A1:C")
-        if links_values:
-            headers = links_values[0]
-            rows = links_values[1:]
-            new_cache["Links"] = pd.DataFrame(rows, columns=headers)
-        else:
-            new_cache["Links"] = pd.DataFrame()
+        headers = links_ws.row_values(1)
+        records = links_ws.get_all_records()
+        new_cache["Links"] = (
+            pd.DataFrame(records) if records else pd.DataFrame(columns=headers)
+        )
 
         # -------- STATS --------
         if STATS_SHEET_ID:
             stats_spreadsheet = client.open_by_key(STATS_SHEET_ID)
-            for ws in stats_spreadsheet.worksheets():
-                values = ws.get("A1:G")
-                if not values:
-                    new_cache[ws.title] = pd.DataFrame()
-                    continue
 
-                headers = values[0]
-                rows = values[1:]
-                df = pd.DataFrame(rows, columns=headers)
-                new_cache[ws.title] = df
+            for ws in stats_spreadsheet.worksheets():
+
+                # 🔹 SOLO REQ LIMITADO A A-G
+                if ws.title.strip().lower() == "req":
+                    values = ws.get("A1:G")
+                    if not values:
+                        new_cache[ws.title] = pd.DataFrame()
+                        continue
+
+                    headers = values[0]
+                    rows = values[1:]
+                    df = pd.DataFrame(rows, columns=headers)
+                    new_cache[ws.title] = df
+
+                else:
+                    headers = ws.row_values(1)
+                    records = ws.get_all_records()
+                    new_cache[ws.title] = (
+                        pd.DataFrame(records)
+                        if records
+                        else pd.DataFrame(columns=headers)
+                    )
 
         sheet_cache.clear()
         sheet_cache.update(new_cache)
@@ -181,6 +195,7 @@ async def link(interaction: discord.Interaction, rok_id: str):
     await refresh_cache()
     await interaction.followup.send("Linked successfully.")
 
+
 @bot.tree.command(name="unlink")
 async def unlink(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
@@ -201,6 +216,7 @@ async def unlink(interaction: discord.Interaction):
     await asyncio.to_thread(ws.delete_rows, row_index)
     await refresh_cache()
     await interaction.followup.send("Unlinked successfully.")
+
 
 @bot.tree.command(name="link_filler")
 async def link_filler(interaction: discord.Interaction, filler_id: str):
@@ -227,6 +243,7 @@ async def link_filler(interaction: discord.Interaction, filler_id: str):
     await refresh_cache()
     await interaction.followup.send("Filler linked.")
 
+
 @bot.tree.command(name="unlink_filler")
 async def unlink_filler(interaction: discord.Interaction, filler_id: str):
     await interaction.response.defer(ephemeral=True)
@@ -252,6 +269,7 @@ async def unlink_filler(interaction: discord.Interaction, filler_id: str):
     await refresh_cache()
     await interaction.followup.send("Filler unlinked.")
 
+
 @bot.tree.command(name="data")
 async def data(interaction: discord.Interaction, link: str):
     await interaction.response.defer(ephemeral=True)
@@ -264,6 +282,7 @@ async def data(interaction: discord.Interaction, link: str):
     STATS_SHEET_ID = extract_sheet_id(link)
     await refresh_cache()
     await interaction.followup.send("Stats sheet connected.")
+
 
 # ================= MY_STATS =================
 
@@ -403,6 +422,7 @@ async def my_stats(interaction: discord.Interaction):
     embed.set_image(url="attachment://progress.gif")
 
     await interaction.followup.send(embed=embed, file=file)
+
 
 @bot.event
 async def on_ready():
