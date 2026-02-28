@@ -18,12 +18,13 @@ GOOGLE_CREDENTIALS = json.loads(os.environ["GOOGLE_CREDENTIALS"])
 LINKS_SHEET_ID = os.environ["LINKS_SHEET_ID"]
 ADMIN_ROLE_ID = int(os.environ.get("ADMIN_ROLE_ID", 0))
 
+# Filler Bonus Settings
 FILLER_REQUIRED_PERCENT = 0.02
 FILLER_BONUS_MULTIPLIER = 0.50
 
 STATS_SHEET_ID = None
 
-# ================= INTENTS =================
+# CONFIGURACIÓN DE INTENTS
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -34,13 +35,8 @@ CACHE_DURATION = 60
 
 # ================= GOOGLE =================
 def get_client():
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    creds = Credentials.from_service_account_info(
-        GOOGLE_CREDENTIALS, scopes=scopes
-    )
+    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    creds = Credentials.from_service_account_info(GOOGLE_CREDENTIALS, scopes=scopes)
     return gspread.authorize(creds)
 
 def extract_sheet_id(link):
@@ -54,24 +50,31 @@ def blocking_refresh_cache():
         client = get_client()
         new_cache = {}
 
+        # -------- LINKS --------
         links_spreadsheet = client.open_by_key(LINKS_SHEET_ID)
         links_ws = links_spreadsheet.worksheet("Links")
-        headers = links_ws.row_values(1)
-        records = links_ws.get_all_records()
-        new_cache["Links"] = (
-            pd.DataFrame(records) if records else pd.DataFrame(columns=headers)
-        )
 
+        links_values = links_ws.get("A1:C")
+        if links_values:
+            headers = links_values[0]
+            rows = links_values[1:]
+            new_cache["Links"] = pd.DataFrame(rows, columns=headers)
+        else:
+            new_cache["Links"] = pd.DataFrame()
+
+        # -------- STATS --------
         if STATS_SHEET_ID:
             stats_spreadsheet = client.open_by_key(STATS_SHEET_ID)
             for ws in stats_spreadsheet.worksheets():
-                headers = ws.row_values(1)
-                records = ws.get_all_records()
-                new_cache[ws.title] = (
-                    pd.DataFrame(records)
-                    if records
-                    else pd.DataFrame(columns=headers)
-                )
+                values = ws.get("A1:G")
+                if not values:
+                    new_cache[ws.title] = pd.DataFrame()
+                    continue
+
+                headers = values[0]
+                rows = values[1:]
+                df = pd.DataFrame(rows, columns=headers)
+                new_cache[ws.title] = df
 
         sheet_cache.clear()
         sheet_cache.update(new_cache)
@@ -93,7 +96,6 @@ async def get_links_ws():
     def open_ws():
         client = get_client()
         return client.open_by_key(LINKS_SHEET_ID).worksheet("Links")
-
     return await asyncio.to_thread(open_ws)
 
 # ================= UTIL =================
@@ -149,9 +151,6 @@ def create_animated_progress_bar(dkp_final=0, dead_final=0, duration=2.5, fps=30
 
         frames.append(img)
 
-    for _ in range(fps * 5):
-        frames.append(frames[-1])
-
     buf = BytesIO()
     frames[0].save(
         buf,
@@ -164,7 +163,8 @@ def create_animated_progress_bar(dkp_final=0, dead_final=0, duration=2.5, fps=30
     buf.seek(0)
     return buf
 
-# ================= LINK COMMANDS =================
+# ================= COMMANDS =================
+
 @bot.tree.command(name="link")
 async def link(interaction: discord.Interaction, rok_id: str):
     await interaction.response.defer(ephemeral=True)
@@ -172,13 +172,10 @@ async def link(interaction: discord.Interaction, rok_id: str):
     df = sheets.get("Links")
     ws = await get_links_ws()
 
-    if (
-        "Discord ID" in df.columns
-        and str(interaction.user.id)
-        in df["Discord ID"].astype(str).values
-    ):
-        await interaction.followup.send("Already linked.")
-        return
+    if df is not None and not df.empty:
+        if str(interaction.user.id) in df["Discord ID"].astype(str).values:
+            await interaction.followup.send("Already linked.")
+            return
 
     await asyncio.to_thread(ws.append_row, [str(interaction.user.id), rok_id, ""])
     await refresh_cache()
@@ -190,6 +187,10 @@ async def unlink(interaction: discord.Interaction):
     sheets = await get_sheets()
     df = sheets.get("Links")
     ws = await get_links_ws()
+
+    if df is None or df.empty:
+        await interaction.followup.send("Not linked.")
+        return
 
     rows = df[df["Discord ID"].astype(str) == str(interaction.user.id)]
     if rows.empty:
@@ -255,9 +256,7 @@ async def unlink_filler(interaction: discord.Interaction, filler_id: str):
 async def data(interaction: discord.Interaction, link: str):
     await interaction.response.defer(ephemeral=True)
 
-    if ADMIN_ROLE_ID and not any(
-        r.id == ADMIN_ROLE_ID for r in interaction.user.roles
-    ):
+    if ADMIN_ROLE_ID and not any(r.id == ADMIN_ROLE_ID for r in interaction.user.roles):
         await interaction.followup.send("No permission.")
         return
 
@@ -267,12 +266,17 @@ async def data(interaction: discord.Interaction, link: str):
     await interaction.followup.send("Stats sheet connected.")
 
 # ================= MY_STATS =================
+
 @bot.tree.command(name="my_stats")
 async def my_stats(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=False)
 
     sheets_dict = await get_sheets()
     links = sheets_dict.get("Links")
+
+    if links is None or links.empty:
+        await interaction.followup.send("Links sheet not loaded.")
+        return
 
     rows = links[links["Discord ID"].astype(str) == str(interaction.user.id)]
     if rows.empty:
@@ -288,7 +292,7 @@ async def my_stats(interaction: discord.Interaction):
     dkp_pct, dead_pct = 0, 0
 
     overall_df = sheets_dict.get("Overall")
-    if overall_df is not None:
+    if overall_df is not None and not overall_df.empty:
         m_row = overall_df[overall_df["ID"].astype(str) == main_id]
         if not m_row.empty:
             r = m_row.iloc[0]
@@ -301,15 +305,17 @@ async def my_stats(interaction: discord.Interaction):
             deads = clean_number(r.get("Deads", 0))
             req_deads_calc = clean_number(r.get("Required Deads", 1))
 
-            dkp_pct = (dkp / goal_dkp * 100) if goal_dkp > 0 else 0
-            dead_pct = (deads / req_deads_calc * 100) if req_deads_calc > 0 else 0
+            if goal_dkp > 0:
+                dkp_pct = dkp / goal_dkp * 100
+            if req_deads_calc > 0:
+                dead_pct = deads / req_deads_calc * 100
 
-    # ===== REQ SHEET =====
+    # ===== REQ =====
     req_dkp = 0
     req_deads = 0
 
     req_df = sheets_dict.get("REQ")
-    if req_df is not None:
+    if req_df is not None and not req_df.empty:
         req_row = req_df[req_df["ID"].astype(str) == main_id]
         if not req_row.empty:
             rr = req_row.iloc[0]
@@ -339,7 +345,7 @@ async def my_stats(interaction: discord.Interaction):
 
     for sheet_name in ordered_sheets:
         df = sheets_dict.get(sheet_name)
-        if df is None:
+        if df is None or df.empty:
             continue
 
         row = df[df["ID"].astype(str) == main_id]
@@ -357,11 +363,7 @@ async def my_stats(interaction: discord.Interaction):
                 f"┗ {EMOJI_DEADS} **Deads:** {fmt(ds)}\n\n"
             )
 
-            embed.add_field(
-                name=f"{EMOJI_ZONE} {sheet_name}",
-                value=zone_block,
-                inline=False,
-            )
+            embed.add_field(name=f"{EMOJI_ZONE} {sheet_name}", value=zone_block, inline=False)
 
     # ===== FILLER BONUS =====
     total_bonus = 0
@@ -378,11 +380,7 @@ async def my_stats(interaction: discord.Interaction):
                 req = p * FILLER_REQUIRED_PERCENT
 
                 prog = min(max((df_ / req * 100) if req > 0 else 0, 0), 100)
-                bonus = (
-                    (df_ - req) * FILLER_BONUS_MULTIPLIER
-                    if prog >= 100
-                    else 0
-                )
+                bonus = (df_ - req) * FILLER_BONUS_MULTIPLIER if prog >= 100 else 0
 
                 total_bonus += bonus
                 bar = "█" * int(prog / 10) + "─" * (10 - int(prog / 10))
@@ -396,14 +394,11 @@ async def my_stats(interaction: discord.Interaction):
     if bonus_lines:
         embed.add_field(
             name="✨ Filler Bonus (Deads)",
-            value="\n\n".join(bonus_lines)
-            + f"\n\n**Total bonus:** +**{fmt(total_bonus)}**",
-            inline=False,
+            value="\n\n".join(bonus_lines) + f"\n\n**Total bonus:** +**{fmt(total_bonus)}**",
+            inline=False
         )
 
-    gif_buf = await asyncio.to_thread(
-        create_animated_progress_bar, dkp_pct, dead_pct
-    )
+    gif_buf = await asyncio.to_thread(create_animated_progress_bar, dkp_pct, dead_pct)
     file = discord.File(gif_buf, filename="progress.gif")
     embed.set_image(url="attachment://progress.gif")
 
