@@ -653,6 +653,7 @@ async def req(interaction: discord.Interaction):
         f_required_deads_fmt = fmt(round(f_required_deads))  # redondeamos para que se vea limpio
         
         filler_blocks.append(
+            f"\n
             f"🆔 `{fid}` — **{f_name}**\n"
             f"   🏰 Power: {fmt(f_power)}\n"
             f"   💀 Required Deads: {f_required_deads_fmt} (2%)"
@@ -660,7 +661,7 @@ async def req(interaction: discord.Interaction):
     
     if filler_blocks:
         embed.add_field(
-            name="🧩 Fillers (2% Rule)",
+            name="🧩 Fillers",
             value="\n\n".join(filler_blocks),
             inline=False
         )
