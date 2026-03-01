@@ -417,8 +417,11 @@ async def my_stats(interaction: discord.Interaction):
         return
 
     main_id = str(rows.iloc[0]["Main ID"])
-    filler_ids_raw = rows.iloc[0].get("Filler IDs", "")
-    flinks = [fid.strip() for fid in str(filler_ids_raw).split(",") if fid.strip()]
+    row_index = rows.index[0] + 2
+    ws = await get_links_ws()
+    cell = await asyncio.to_thread(ws.cell, row_index, 3)
+    filler_raw = cell.value or ""
+    flinks = [fid.strip() for fid in str(filler_raw).split(",") if fid.strip()]
 
     overall_df = sheets_dict.get("Overall")
     req_df = sheets_dict.get("REQ")
@@ -601,8 +604,11 @@ async def req(interaction: discord.Interaction):
         return
     
     main_id = str(rows.iloc[0]["Main ID"])
-    filler_ids_raw = rows.iloc[0].get("Filler IDs", "")
-    filler_ids = [fid.strip() for fid in str(filler_ids_raw).split(",") if fid.strip()]
+    row_index = rows.index[0] + 2
+    ws = await get_links_ws()
+    cell = await asyncio.to_thread(ws.cell, row_index, 3)
+    filler_raw = cell.value or ""
+    filler_ids = [fid.strip() for fid in str(filler_raw).split(",") if fid.strip()]
     
     req_df = sheets_dict.get("REQ")
     if req_df is None:
