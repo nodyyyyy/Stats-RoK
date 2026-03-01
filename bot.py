@@ -439,7 +439,7 @@ async def my_stats(interaction: discord.Interaction):
     if not m_row.empty:
         r = m_row.iloc[0]
         main_name = r.get("Name", "Unknown")
-        main_power = clean_number(r.get("Power", 0))
+        main_power = clean_number(r.get("Initial Power", 0))
         main_current_power = clean_number(r.get("Current Power", 0))
 
         dkp = clean_number(r.get("DKP", 0))
