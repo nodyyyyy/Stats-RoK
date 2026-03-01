@@ -394,7 +394,6 @@ async def kvk(interaction: discord.Interaction, status: str):
 async def my_stats(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=False)
 
-    # 🔥 KVK STATUS CHECK
     if not KVK_ACTIVE:
         embed = discord.Embed(
             title="⚔️ KvK Status",
@@ -421,36 +420,40 @@ async def my_stats(interaction: discord.Interaction):
     filler_ids_raw = rows.iloc[0].get("Filler IDs", "")
     flinks = [fid.strip() for fid in str(filler_ids_raw).split(",") if fid.strip()]
 
+    overall_df = sheets_dict.get("Overall")
+    req_df = sheets_dict.get("REQ")
+
+    if overall_df is None:
+        await interaction.followup.send("Overall sheet not loaded.")
+        return
+
+    # ================= MAIN =================
+
     main_name, main_power, main_current_power = "Unknown", 0, 0
     dkp_pct, dead_pct = 0, 0
-
-    overall_df = sheets_dict.get("Overall")
-
-    if overall_df is not None and not overall_df.empty:
-        m_row = overall_df[overall_df["ID"].astype(str) == main_id]
-
-        if not m_row.empty:
-            r = m_row.iloc[0]
-            main_name = r.get("Name", "Unknown")
-            main_power = clean_number(r.get("Power", 0))
-            main_current_power = clean_number(r.get("Current Power", 0))
-
-            dkp = clean_number(r.get("DKP", 0))
-            goal_dkp = clean_number(r.get("Goal DKP", 1))
-            deads = clean_number(r.get("Deads", 0))
-            req_deads_calc = clean_number(r.get("Required Deads", 1))
-
-            if goal_dkp > 0:
-                dkp_pct = dkp / goal_dkp * 100
-
-            if req_deads_calc > 0:
-                dead_pct = deads / req_deads_calc * 100
-
-    # ===== REQ =====
     req_dkp = 0
     req_deads = 0
 
-    req_df = sheets_dict.get("REQ")
+    m_row = overall_df[overall_df["ID"].astype(str) == main_id]
+
+    if not m_row.empty:
+        r = m_row.iloc[0]
+        main_name = r.get("Name", "Unknown")
+        main_power = clean_number(r.get("Power", 0))
+        main_current_power = clean_number(r.get("Current Power", 0))
+
+        dkp = clean_number(r.get("DKP", 0))
+        goal_dkp = clean_number(r.get("Goal DKP", 1))
+        deads = clean_number(r.get("Deads", 0))
+        req_deads_calc = clean_number(r.get("Required Deads", 1))
+
+        if goal_dkp > 0:
+            dkp_pct = dkp / goal_dkp * 100
+
+        if req_deads_calc > 0:
+            dead_pct = deads / req_deads_calc * 100
+
+    # ===== REQUIRED FROM REQ =====
 
     if req_df is not None and not req_df.empty:
         req_row = req_df[req_df["ID"].astype(str) == main_id]
@@ -473,7 +476,8 @@ async def my_stats(interaction: discord.Interaction):
         f"💀 **Required Deads:** {fmt(req_deads)}"
     )
 
-    # ===== ZONES =====
+    # ================= ZONES =================
+
     EMOJI_ZONE = "<:KvK:1476664387358949541>"
     EMOJI_KP = "🎯"
     EMOJI_T4 = "<:T4:1476664385106739320>"
@@ -523,7 +527,8 @@ async def my_stats(interaction: discord.Interaction):
             inline=False
         )
 
-    # ===== FILLER BONUS =====
+    # ================= FILLER BONUS (ORIGINAL LOGIC) =================
+
     total_bonus = 0
     bonus_lines = []
 
@@ -543,25 +548,17 @@ async def my_stats(interaction: discord.Interaction):
             df_ = clean_number(f.get("Deads", 0))
             req = p * FILLER_REQUIRED_PERCENT
 
-            prog = (
-                (df_ / req * 100)
-                if req > 0 else 0
-            )
-
+            prog = (df_ / req * 100) if req > 0 else 0
             prog = min(max(prog, 0), 100)
 
-            bonus = (
-                (df_ - req) * FILLER_BONUS_MULTIPLIER
-                if prog >= 100 else 0
-            )
-
+            bonus = (df_ - req) * FILLER_BONUS_MULTIPLIER if prog >= 100 else 0
             total_bonus += bonus
 
             bar = "█" * int(prog / 10) + "─" * (10 - int(prog / 10))
 
             bonus_lines.append(
                 f"🆔 `{fid}` — **{fn}**\n"
-                f"💀 **{fmt(df_)}** / {fmt(req)}  "
+                f"💀 **{fmt(df_)}** / {fmt(req)} "
                 f"[{bar}] {int(prog)}%\n"
                 f"{f'✨ +**{fmt(bonus)}**' if prog >= 100 else '(not qualified)'}"
             )
@@ -591,58 +588,85 @@ async def my_stats(interaction: discord.Interaction):
 @bot.tree.command(name="req")
 async def req(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=False)
-
+    
     sheets_dict = await get_sheets()
     links = sheets_dict.get("Links")
-
     if links is None or links.empty:
         await interaction.followup.send("Links sheet not loaded.")
         return
-
+    
     rows = links[links["Discord ID"].astype(str) == str(interaction.user.id)]
-
     if rows.empty:
         await interaction.followup.send("You are not linked.")
         return
-
+    
     main_id = str(rows.iloc[0]["Main ID"])
+    filler_ids_raw = rows.iloc[0].get("Filler IDs", "")
+    filler_ids = [fid.strip() for fid in str(filler_ids_raw).split(",") if fid.strip()]
+    
     req_df = sheets_dict.get("REQ")
-
-    if req_df is None or req_df.empty:
-        await interaction.followup.send("REQ sheet not found.")
+    if req_df is None:
+        await interaction.followup.send("REQ sheet not loaded.")
         return
-
+    
     req_row = req_df[req_df["ID"].astype(str) == main_id]
-
     if req_row.empty:
         await interaction.followup.send("No REQ data found for you.")
         return
-
+    
     r = req_row.iloc[0]
-
     name = r.get("Name", "Unknown")
     power = clean_number(r.get("Power", 0))
     req_dkp = clean_number(r.get("Required DKP", 0))
-    pct_dkp = r.get("% DKP", "0")
     req_deads = clean_number(r.get("Required Deads", 0))
-    pct_deads = r.get("% Deads", "0")
-
+    
+    pct_dkp = r.get("% DKP", "0%")
+    pct_deads = r.get("% Deads", "0%")
+    
     embed = discord.Embed(
         title="📊 REQUIREMENTS",
         color=discord.Color.purple()
     )
-
+    
     embed.description = (
-        f"┣ 👤 **Name:** {name}\n"
+        f"┣ 👤 **Main:** {name}\n"
         f"┣ 🏰 **Power:** {fmt(power)}\n\n"
         f"┣ 📌 **Required DKP:** {fmt(req_dkp)}\n"
         f"┣ 📊 **% DKP:** {pct_dkp}\n\n"
         f"┣ 💀 **Required Deads:** {fmt(req_deads)}\n"
         f"┗ 📊 **% Deads:** {pct_deads}"
     )
-
+    
+    # ================= FILLERS =================
+    filler_blocks = []
+    for fid in filler_ids:
+        f_req_row = req_df[req_df["ID"].astype(str) == str(fid)]
+        if f_req_row.empty:
+            continue
+        
+        fr = f_req_row.iloc[0]
+        f_name = fr.get("Name", "Unknown")
+        f_power = clean_number(fr.get("Power", 0))
+        
+        # Required Deads = 2% del Power del filler
+        f_required_deads = f_power * 0.02
+        f_required_deads_fmt = fmt(round(f_required_deads))  # redondeamos para que se vea limpio
+        
+        filler_blocks.append(
+            f"🆔 `{fid}` — **{f_name}**\n"
+            f"   🏰 Power: {fmt(f_power)}\n"
+            f"   💀 Required Deads: {f_required_deads_fmt} (2%)"
+        )
+    
+    if filler_blocks:
+        embed.add_field(
+            name="🧩 Fillers (2% Rule)",
+            value="\n\n".join(filler_blocks),
+            inline=False
+        )
+    # Si no hay fillers válidos, el campo simplemente no aparece
+    
     await interaction.followup.send(embed=embed)
-
 
 # ================= READY =================
 
