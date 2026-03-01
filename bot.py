@@ -595,6 +595,10 @@ async def req(interaction: discord.Interaction):
     sheets_dict = await get_sheets()
     links = sheets_dict.get("Links")
 
+    if links is None or links.empty:
+        await interaction.followup.send("Links sheet not loaded.")
+        return
+
     rows = links[links["Discord ID"].astype(str) == str(interaction.user.id)]
 
     if rows.empty:
@@ -616,45 +620,25 @@ async def req(interaction: discord.Interaction):
 
     r = req_row.iloc[0]
 
+    name = r.get("Name", "Unknown")
+    power = clean_number(r.get("Power", 0))
+    req_dkp = clean_number(r.get("Required DKP", 0))
+    pct_dkp = r.get("% DKP", "0")
+    req_deads = clean_number(r.get("Required Deads", 0))
+    pct_deads = r.get("% Deads", "0")
+
     embed = discord.Embed(
-        title="📋 REQ REQUIREMENTS",
-        color=discord.Color.gold()
+        title="📊 REQ STATISTIC",
+        color=discord.Color.purple()
     )
 
-    embed.add_field(
-        name="👤 Name",
-        value=r.get("Name", "Unknown"),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🏰 Power",
-        value=fmt(clean_number(r.get("Power", 0))),
-        inline=True
-    )
-
-    embed.add_field(
-        name="🎯 Required DKP",
-        value=fmt(clean_number(r.get("Required DKP", 0))),
-        inline=True
-    )
-
-    embed.add_field(
-        name="📊 % DKP",
-        value=str(r.get("% DKP", "0")),
-        inline=True
-    )
-
-    embed.add_field(
-        name="💀 Required Deads",
-        value=fmt(clean_number(r.get("Required Deads", 0))),
-        inline=True
-    )
-
-    embed.add_field(
-        name="📊 % Deads",
-        value=str(r.get("% Deads", "0")),
-        inline=True
+    embed.description = (
+        f"┣ 👤 **Name:** {name}\n"
+        f"┣ 🏰 **Power:** {fmt(power)}\n\n"
+        f"┣ 📌 **Required DKP:** {fmt(req_dkp)}\n"
+        f"┣ 📊 **% DKP:** {pct_dkp}\n\n"
+        f"┣ 💀 **Required Deads:** {fmt(req_deads)}\n"
+        f"┗ 📊 **% Deads:** {pct_deads}"
     )
 
     await interaction.followup.send(embed=embed)
