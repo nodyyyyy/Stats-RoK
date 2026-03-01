@@ -22,6 +22,7 @@ FILLER_REQUIRED_PERCENT = 0.02
 FILLER_BONUS_MULTIPLIER = 0.50
 
 STATS_SHEET_ID = None
+KVK_ACTIVE = False  # 🔥 Nuevo control de estado
 
 # ================= INTENTS =================
 intents = discord.Intents.default()
@@ -54,7 +55,7 @@ def blocking_refresh_cache():
         client = get_client()
         new_cache = {}
 
-        # LINKS (normal)
+        # -------- LINKS --------
         links_spreadsheet = client.open_by_key(LINKS_SHEET_ID)
         links_ws = links_spreadsheet.worksheet("Links")
         headers = links_ws.row_values(1)
@@ -63,7 +64,7 @@ def blocking_refresh_cache():
             pd.DataFrame(records) if records else pd.DataFrame(columns=headers)
         )
 
-        # STATS
+        # -------- STATS --------
         if STATS_SHEET_ID:
             stats_spreadsheet = client.open_by_key(STATS_SHEET_ID)
 
@@ -230,7 +231,8 @@ async def link_filler(interaction: discord.Interaction, filler_id: str):
         await interaction.followup.send("Link your main first.")
         return
 
-    index, current = rows.index[0], str(rows.iloc[0].get("Filler IDs", "") or "")
+    index = rows.index[0]
+    current = str(rows.iloc[0].get("Filler IDs", "") or "")
     fillers = [f.strip() for f in current.split(",") if f.strip()]
 
     if filler_id in fillers:
@@ -255,7 +257,8 @@ async def unlink_filler(interaction: discord.Interaction, filler_id: str):
         await interaction.followup.send("Not linked.")
         return
 
-    index, current = rows.index[0], str(rows.iloc[0].get("Filler IDs", "") or "")
+    index = rows.index[0]
+    current = str(rows.iloc[0].get("Filler IDs", "") or "")
     fillers = [f.strip() for f in current.split(",") if f.strip()]
 
     if filler_id not in fillers:
@@ -282,16 +285,50 @@ async def data(interaction: discord.Interaction, link: str):
     await interaction.followup.send("Stats sheet connected.")
 
 
+# ================= KVK CONTROL =================
+
+@bot.tree.command(name="kvk")
+async def kvk(interaction: discord.Interaction, status: str):
+    await interaction.response.defer(ephemeral=True)
+
+    if ADMIN_ROLE_ID and not any(r.id == ADMIN_ROLE_ID for r in interaction.user.roles):
+        await interaction.followup.send("No permission.")
+        return
+
+    global KVK_ACTIVE
+
+    status = status.lower()
+
+    if status == "on":
+        KVK_ACTIVE = True
+        await interaction.followup.send("KvK activated.")
+    elif status == "off":
+        KVK_ACTIVE = False
+        await interaction.followup.send("KvK deactivated.")
+    else:
+        await interaction.followup.send("Use: /kvk on  or  /kvk off")
+
+
 # ================= MY_STATS =================
 
 @bot.tree.command(name="my_stats")
 async def my_stats(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=False)
 
+    # 🔥 KVK CHECK
+    if not KVK_ACTIVE:
+        embed = discord.Embed(
+            title="⚔️ KvK Status",
+            description="KvK has not started yet.",
+            color=discord.Color.red()
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        return
+
     sheets_dict = await get_sheets()
     links = sheets_dict.get("Links")
-    rows = links[links["Discord ID"].astype(str) == str(interaction.user.id)]
 
+    rows = links[links["Discord ID"].astype(str) == str(interaction.user.id)]
     if rows.empty:
         await interaction.followup.send("You are not linked.")
         return
@@ -299,11 +336,6 @@ async def my_stats(interaction: discord.Interaction):
     main_id = str(rows.iloc[0]["Main ID"])
     filler_ids_raw = rows.iloc[0].get("Filler IDs", "")
     flinks = [fid.strip() for fid in str(filler_ids_raw).split(",") if fid.strip()]
-
-    all_stat_sheets = [name for name in sheets_dict.keys() if name != "Links"]
-    ordered_sheets = [s for s in all_stat_sheets if s.lower() not in ["overall", "req"]]
-    if any(s.lower() == "overall" for s in all_stat_sheets):
-        ordered_sheets.append("Overall")
 
     main_name, main_power, main_current_power = "Unknown", 0, 0
     dkp_pct, dead_pct = 0, 0
@@ -325,11 +357,11 @@ async def my_stats(interaction: discord.Interaction):
             dkp_pct = (dkp / goal_dkp * 100) if goal_dkp > 0 else 0
             dead_pct = (deads / req_deads_calc * 100) if req_deads_calc > 0 else 0
 
-    # ===== REQ =====
+    # REQ
     req_dkp = 0
     req_deads = 0
-
     req_df = sheets_dict.get("REQ")
+
     if req_df is not None:
         req_row = req_df[req_df["ID"].astype(str) == main_id]
         if not req_row.empty:
@@ -345,67 +377,6 @@ async def my_stats(interaction: discord.Interaction):
         f"📌 **Required DKP:** {fmt(req_dkp)}\n"
         f"💀 **Required Deads:** {fmt(req_deads)}"
     )
-
-    # ===== ZONES =====
-    EMOJI_ZONE = "<:KvK:1476664387358949541>"
-    EMOJI_KP = "🎯"
-    EMOJI_T4 = "<:T4:1476664385106739320>"
-    EMOJI_T5 = "<:T5:1476664389095522475>"
-    EMOJI_DEADS = "💀"
-
-    for sheet_name in ordered_sheets:
-        df = sheets_dict.get(sheet_name)
-        if df is None:
-            continue
-
-        row = df[df["ID"].astype(str) == main_id]
-        if not row.empty:
-            r = row.iloc[0]
-            kp = clean_number(r.get("KP", 0))
-            t4 = clean_number(r.get("T4 Kills", 0))
-            t5 = clean_number(r.get("T5 Kills", 0))
-            ds = clean_number(r.get("Deads", 0))
-
-            zone_block = (
-                f"┣ {EMOJI_KP} **KP:** {fmt(kp)}\n"
-                f"┣ {EMOJI_T4} **T4 Kills:** {fmt(t4)}\n"
-                f"┣ {EMOJI_T5} **T5 Kills:** {fmt(t5)}\n"
-                f"┗ {EMOJI_DEADS} **Deads:** {fmt(ds)}\n\n"
-            )
-
-            embed.add_field(name=f"{EMOJI_ZONE} {sheet_name}", value=zone_block, inline=False)
-
-    # ===== FILLER BONUS =====
-    total_bonus, bonus_lines = 0, []
-
-    if overall_df is not None and flinks:
-        for fid in flinks:
-            row_f = overall_df[overall_df["ID"].astype(str) == str(fid)]
-            if not row_f.empty:
-                f = row_f.iloc[0]
-                fn = f.get("Name", "Unknown")
-                p = clean_number(f.get("Initial Power", f.get("Power", 0)))
-                df_ = clean_number(f.get("Deads", 0))
-                req = p * FILLER_REQUIRED_PERCENT
-
-                prog = min(max((df_ / req * 100) if req > 0 else 0, 0), 100)
-                bonus = (df_ - req) * FILLER_BONUS_MULTIPLIER if prog >= 100 else 0
-
-                total_bonus += bonus
-                bar = "█" * int(prog / 10) + "─" * (10 - int(prog / 10))
-
-                bonus_lines.append(
-                    f"🆔 `{fid}` — **{fn}**\n"
-                    f"💀 **{fmt(df_)}** / {fmt(req)}  [{bar}] {int(prog)}%\n"
-                    f"{f'✨ +**{fmt(bonus)}**' if prog >= 100 else '(not qualified)'}"
-                )
-
-    if bonus_lines:
-        embed.add_field(
-            name="✨ Filler Bonus (Deads)",
-            value="\n\n".join(bonus_lines) + f"\n\n**Total bonus:** +**{fmt(total_bonus)}**",
-            inline=False
-        )
 
     gif_buf = await asyncio.to_thread(create_animated_progress_bar, dkp_pct, dead_pct)
     file = discord.File(gif_buf, filename="progress.gif")
