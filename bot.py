@@ -628,7 +628,7 @@ async def req(interaction: discord.Interaction):
     pct_deads = r.get("% Deads", "0")
 
     embed = discord.Embed(
-        title="📊 REQ STATISTIC",
+        title="📊 REQUIREMENTS",
         color=discord.Color.purple()
     )
 
