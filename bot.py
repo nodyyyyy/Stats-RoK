@@ -399,7 +399,7 @@ async def my_stats(interaction: discord.Interaction):
         embed = discord.Embed(
             title="⚔️ KvK Status",
             description="KvK has not started yet.",
-            color=discord.Color.red()
+            color=discord.Color.purple()
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
         return
