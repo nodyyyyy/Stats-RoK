@@ -54,7 +54,7 @@ def blocking_refresh_cache():
         client = get_client()
         new_cache = {}
 
-        # -------- LINKS --------
+        # LINKS (normal)
         links_spreadsheet = client.open_by_key(LINKS_SHEET_ID)
         links_ws = links_spreadsheet.worksheet("Links")
         headers = links_ws.row_values(1)
@@ -63,13 +63,13 @@ def blocking_refresh_cache():
             pd.DataFrame(records) if records else pd.DataFrame(columns=headers)
         )
 
-        # -------- STATS --------
+        # STATS
         if STATS_SHEET_ID:
             stats_spreadsheet = client.open_by_key(STATS_SHEET_ID)
 
             for ws in stats_spreadsheet.worksheets():
 
-                # 🔹 SOLO REQ LIMITADO A A-G
+                # SOLO REQ limitado a A-G
                 if ws.title.strip().lower() == "req":
                     values = ws.get("A1:G")
                     if not values:
@@ -230,8 +230,7 @@ async def link_filler(interaction: discord.Interaction, filler_id: str):
         await interaction.followup.send("Link your main first.")
         return
 
-    index = rows.index[0]
-    current = str(rows.iloc[0].get("Filler IDs", "") or "")
+    index, current = rows.index[0], str(rows.iloc[0].get("Filler IDs", "") or "")
     fillers = [f.strip() for f in current.split(",") if f.strip()]
 
     if filler_id in fillers:
@@ -256,8 +255,7 @@ async def unlink_filler(interaction: discord.Interaction, filler_id: str):
         await interaction.followup.send("Not linked.")
         return
 
-    index = rows.index[0]
-    current = str(rows.iloc[0].get("Filler IDs", "") or "")
+    index, current = rows.index[0], str(rows.iloc[0].get("Filler IDs", "") or "")
     fillers = [f.strip() for f in current.split(",") if f.strip()]
 
     if filler_id not in fillers:
@@ -292,12 +290,8 @@ async def my_stats(interaction: discord.Interaction):
 
     sheets_dict = await get_sheets()
     links = sheets_dict.get("Links")
-
-    if links is None or links.empty:
-        await interaction.followup.send("Links sheet not loaded.")
-        return
-
     rows = links[links["Discord ID"].astype(str) == str(interaction.user.id)]
+
     if rows.empty:
         await interaction.followup.send("You are not linked.")
         return
@@ -306,12 +300,16 @@ async def my_stats(interaction: discord.Interaction):
     filler_ids_raw = rows.iloc[0].get("Filler IDs", "")
     flinks = [fid.strip() for fid in str(filler_ids_raw).split(",") if fid.strip()]
 
-    # ===== OVERALL =====
+    all_stat_sheets = [name for name in sheets_dict.keys() if name != "Links"]
+    ordered_sheets = [s for s in all_stat_sheets if s.lower() not in ["overall", "req"]]
+    if any(s.lower() == "overall" for s in all_stat_sheets):
+        ordered_sheets.append("Overall")
+
     main_name, main_power, main_current_power = "Unknown", 0, 0
     dkp_pct, dead_pct = 0, 0
 
     overall_df = sheets_dict.get("Overall")
-    if overall_df is not None and not overall_df.empty:
+    if overall_df is not None:
         m_row = overall_df[overall_df["ID"].astype(str) == main_id]
         if not m_row.empty:
             r = m_row.iloc[0]
@@ -324,17 +322,15 @@ async def my_stats(interaction: discord.Interaction):
             deads = clean_number(r.get("Deads", 0))
             req_deads_calc = clean_number(r.get("Required Deads", 1))
 
-            if goal_dkp > 0:
-                dkp_pct = dkp / goal_dkp * 100
-            if req_deads_calc > 0:
-                dead_pct = deads / req_deads_calc * 100
+            dkp_pct = (dkp / goal_dkp * 100) if goal_dkp > 0 else 0
+            dead_pct = (deads / req_deads_calc * 100) if req_deads_calc > 0 else 0
 
     # ===== REQ =====
     req_dkp = 0
     req_deads = 0
 
     req_df = sheets_dict.get("REQ")
-    if req_df is not None and not req_df.empty:
+    if req_df is not None:
         req_row = req_df[req_df["ID"].astype(str) == main_id]
         if not req_row.empty:
             rr = req_row.iloc[0]
@@ -357,14 +353,9 @@ async def my_stats(interaction: discord.Interaction):
     EMOJI_T5 = "<:T5:1476664389095522475>"
     EMOJI_DEADS = "💀"
 
-    all_stat_sheets = [name for name in sheets_dict.keys() if name not in ["Links", "REQ"]]
-    ordered_sheets = [s for s in all_stat_sheets if s.lower() != "overall"]
-    if any(s.lower() == "overall" for s in all_stat_sheets):
-        ordered_sheets.append("Overall")
-
     for sheet_name in ordered_sheets:
         df = sheets_dict.get(sheet_name)
-        if df is None or df.empty:
+        if df is None:
             continue
 
         row = df[df["ID"].astype(str) == main_id]
@@ -385,8 +376,7 @@ async def my_stats(interaction: discord.Interaction):
             embed.add_field(name=f"{EMOJI_ZONE} {sheet_name}", value=zone_block, inline=False)
 
     # ===== FILLER BONUS =====
-    total_bonus = 0
-    bonus_lines = []
+    total_bonus, bonus_lines = 0, []
 
     if overall_df is not None and flinks:
         for fid in flinks:
@@ -422,6 +412,45 @@ async def my_stats(interaction: discord.Interaction):
     embed.set_image(url="attachment://progress.gif")
 
     await interaction.followup.send(embed=embed, file=file)
+
+
+# ================= REQ COMMAND =================
+
+@bot.tree.command(name="req")
+async def req(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=False)
+
+    sheets_dict = await get_sheets()
+    links = sheets_dict.get("Links")
+
+    rows = links[links["Discord ID"].astype(str) == str(interaction.user.id)]
+    if rows.empty:
+        await interaction.followup.send("You are not linked.")
+        return
+
+    main_id = str(rows.iloc[0]["Main ID"])
+    req_df = sheets_dict.get("REQ")
+
+    if req_df is None:
+        await interaction.followup.send("REQ sheet not found.")
+        return
+
+    req_row = req_df[req_df["ID"].astype(str) == main_id]
+    if req_row.empty:
+        await interaction.followup.send("No REQ data found for you.")
+        return
+
+    r = req_row.iloc[0]
+
+    embed = discord.Embed(title="📋 REQ REQUIREMENTS", color=discord.Color.gold())
+    embed.add_field(name="👤 Name", value=r.get("Name", "Unknown"), inline=False)
+    embed.add_field(name="🏰 Power", value=fmt(clean_number(r.get("Power", 0))), inline=True)
+    embed.add_field(name="🎯 Required DKP", value=fmt(clean_number(r.get("Required DKP", 0))), inline=True)
+    embed.add_field(name="📊 % DKP", value=str(r.get("% DKP", "0")), inline=True)
+    embed.add_field(name="💀 Required Deads", value=fmt(clean_number(r.get("Required Deads", 0))), inline=True)
+    embed.add_field(name="📊 % Deads", value=str(r.get("% Deads", "0")), inline=True)
+
+    await interaction.followup.send(embed=embed)
 
 
 @bot.event
