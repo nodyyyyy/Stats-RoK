@@ -1,0 +1,6 @@
+discord.py==2.3.2
+gspread
+pandas
+Pillow
+google-auth
+numpy
